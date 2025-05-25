@@ -195,6 +195,21 @@ def handle_view_my_child_events():
 
 
 if __name__ == "__main__":
+    # Initialize the database (create tables if they don't exist)
+    # This should ideally be done once. For a CLI app, doing it at startup is okay.
+    # For web apps, this is often part of a startup script or migration process.
+    try:
+        from src.database import init_db
+        init_db() 
+        # You might want to import models here too if init_db needs them to be defined
+        # For example, if init_db() itself doesn't import them for Base.metadata.create_all()
+        from src import user, shift, child, event # Ensure models are loaded for init_db
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        # Decide if the app should exit or continue if DB init fails.
+        # For this application, it's likely critical.
+        # exit(1) 
+
     while True:
         choice = display_main_menu()
         

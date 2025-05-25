@@ -1,54 +1,164 @@
-import uuid
+# import uuid # No longer needed for generating event_ids
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+
+from src.database import SessionLocal
 from src.event import Event
+# User and Child models might be needed if we want to validate existence of user_id/child_id before linking
+# from src.user import User 
+# from src.child import Child
 
-events_storage = []  # In-memory store for Event objects
+# events_storage is removed
 
-def create_event(title, description, start_time, end_time, linked_user_id=None, linked_child_id=None):
-    event_id = uuid.uuid4().hex
-    new_event = Event(event_id=event_id, title=title, description=description, 
-                      start_time=start_time, end_time=end_time)
-    if linked_user_id:
-        new_event.linked_user_id = linked_user_id
-    if linked_child_id:
-        new_event.linked_child_id = linked_child_id
-    
-    events_storage.append(new_event)
-    return new_event
+def _parse_datetime(datetime_str: str):
+    """Helper to parse string to datetime. Returns None if format is wrong."""
+    if not datetime_str:
+        return None
+    try:
+        return datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+    except ValueError:
+        print(f"Warning: Could not parse datetime string: {datetime_str}")
+        return None
 
-def get_event_details(event_id):
-    for event in events_storage:
-        if event.event_id == event_id:
-            return event
-    return None
+def create_event(title: str, description: str, start_time_str: str, end_time_str: str, 
+                 linked_user_id: int = None, linked_child_id: int = None):
+    db = SessionLocal()
+    try:
+        start_time_dt = _parse_datetime(start_time_str)
+        end_time_dt = _parse_datetime(end_time_str)
 
-def get_events_for_user(user_id):
-    user_events = [event for event in events_storage if event.linked_user_id == user_id]
-    return user_events
+        if not start_time_dt or not end_time_dt:
+            print("Error: Invalid start or end time format for event.")
+            return None
 
-def get_events_for_child(child_id):
-    child_events = [event for event in events_storage if event.linked_child_id == child_id]
-    return child_events
+        # Note: linked_user_id and linked_child_id are now user_id and child_id in the Event model
+        new_event = Event(
+            title=title, 
+            description=description, 
+            start_time=start_time_dt, 
+            end_time=end_time_dt,
+            user_id=linked_user_id, # This is the FK field in Event model
+            child_id=linked_child_id # This is the FK field in Event model
+        )
+        db.add(new_event)
+        db.commit()
+        db.refresh(new_event)
+        return new_event
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error creating event: {e}")
+        return None
+    finally:
+        db.close()
 
-def update_event(event_id, title=None, description=None, start_time=None, end_time=None, linked_user_id=None, linked_child_id=None):
-    event = get_event_details(event_id)
-    if event:
+def get_event_details(event_id: int):
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.id == event_id).first()
+        return event
+    except SQLAlchemyError as e:
+        print(f"Database error getting event details: {e}")
+        return None
+    finally:
+        db.close()
+
+def get_events_for_user(user_id: int):
+    db = SessionLocal()
+    try:
+        # Event model has 'user_id' as the foreign key field
+        events = db.query(Event).filter(Event.user_id == user_id).all()
+        return events
+    except SQLAlchemyError as e:
+        print(f"Database error getting events for user: {e}")
+        return []
+    finally:
+        db.close()
+
+def get_events_for_child(child_id: int):
+    db = SessionLocal()
+    try:
+        # Event model has 'child_id' as the foreign key field
+        events = db.query(Event).filter(Event.child_id == child_id).all()
+        return events
+    except SQLAlchemyError as e:
+        print(f"Database error getting events for child: {e}")
+        return []
+    finally:
+        db.close()
+
+def update_event(event_id: int, title: str = None, description: str = None, 
+                 start_time_str: str = None, end_time_str: str = None, 
+                 linked_user_id: int = None, linked_child_id: int = None,
+                 unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            print("Error: Event not found.")
+            return None
+        
+        updated = False
         if title is not None:
             event.title = title
+            updated = True
         if description is not None:
             event.description = description
-        if start_time is not None:
-            event.start_time = start_time
-        if end_time is not None:
-            event.end_time = end_time
-        if linked_user_id is not None: # Consider how to handle unlinking: linked_user_id = "" or None
-            event.linked_user_id = linked_user_id
-        if linked_child_id is not None: # Consider how to handle unlinking
-            event.linked_child_id = linked_child_id
-        return event # Or True
-    return None # Or False
+            updated = True
+        if start_time_str is not None:
+            start_time_dt = _parse_datetime(start_time_str)
+            if start_time_dt:
+                event.start_time = start_time_dt
+                updated = True
+            else:
+                print("Warning: Invalid start time format, not updated.")
+        if end_time_str is not None:
+            end_time_dt = _parse_datetime(end_time_str)
+            if end_time_dt:
+                event.end_time = end_time_dt
+                updated = True
+            else:
+                print("Warning: Invalid end time format, not updated.")
+        
+        if unlink_user:
+            event.user_id = None
+            updated = True
+        elif linked_user_id is not None:
+            event.user_id = linked_user_id
+            updated = True
+            
+        if unlink_child:
+            event.child_id = None
+            updated = True
+        elif linked_child_id is not None:
+            event.child_id = linked_child_id
+            updated = True
+        
+        if updated:
+            db.commit()
+            db.refresh(event)
+        return event
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error updating event: {e}")
+        return None
+    finally:
+        db.close()
 
-def delete_event(event_id):
-    global events_storage
-    original_length = len(events_storage)
-    events_storage = [event for event in events_storage if event.event_id != event_id]
-    return len(events_storage) < original_length
+def delete_event(event_id: int):
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            print("Error: Event not found for deletion.")
+            return False
+        
+        db.delete(event)
+        db.commit()
+        return True
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error deleting event: {e}")
+        return False
+    finally:
+        db.close()

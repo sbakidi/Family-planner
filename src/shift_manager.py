@@ -1,32 +1,116 @@
-import uuid
+# import uuid # No longer needed for generating shift_ids by this module
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime # For string to datetime conversion
+
+from src.database import SessionLocal
 from src.shift import Shift
+# from src.user import User # Not strictly needed if only user_id is used and no User object operations
 
-shifts_storage = []  # In-memory store for Shift objects
+# shifts_storage is removed, data will be stored in SQLite via SQLAlchemy
 
-def add_shift(user_id, start_time, end_time, name):
-    shift_id = uuid.uuid4().hex
-    new_shift = Shift(shift_id=shift_id, user_id=user_id, start_time=start_time, end_time=end_time, name=name)
-    shifts_storage.append(new_shift)
-    return new_shift
+def _parse_datetime(datetime_str):
+    """Helper to parse string to datetime. Returns None if format is wrong."""
+    if not datetime_str:
+        return None
+    try:
+        return datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+    except ValueError:
+        print(f"Warning: Could not parse datetime string: {datetime_str}")
+        return None
 
-def get_user_shifts(user_id):
-    user_shifts = [shift for shift in shifts_storage if shift.user_id == user_id]
-    return user_shifts
+def add_shift(user_id: int, start_time_str: str, end_time_str: str, name: str):
+    db = SessionLocal()
+    try:
+        start_time_dt = _parse_datetime(start_time_str)
+        end_time_dt = _parse_datetime(end_time_str)
 
-def update_shift(shift_id, new_start_time=None, new_end_time=None, new_name=None):
-    for shift in shifts_storage:
-        if shift.shift_id == shift_id:
-            if new_start_time is not None:
-                shift.start_time = new_start_time
-            if new_end_time is not None:
-                shift.end_time = new_end_time
-            if new_name is not None:
-                shift.name = new_name
-            return shift  # Or True
-    return None  # Or False
+        if not start_time_dt or not end_time_dt:
+            print("Error: Invalid start or end time format.")
+            return None
 
-def delete_shift(shift_id):
-    global shifts_storage
-    original_length = len(shifts_storage)
-    shifts_storage = [shift for shift in shifts_storage if shift.shift_id != shift_id]
-    return len(shifts_storage) < original_length
+        # Assuming user_id is the integer PK from the User model
+        new_shift = Shift(
+            user_id=user_id, 
+            start_time=start_time_dt, 
+            end_time=end_time_dt, 
+            name=name
+        )
+        db.add(new_shift)
+        db.commit()
+        db.refresh(new_shift)
+        return new_shift
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error adding shift: {e}")
+        return None
+    finally:
+        db.close()
+
+def get_user_shifts(user_id: int):
+    db = SessionLocal()
+    try:
+        # Assuming user_id is the integer PK from the User model
+        shifts = db.query(Shift).filter(Shift.user_id == user_id).all()
+        return shifts
+    except SQLAlchemyError as e:
+        print(f"Database error getting user shifts: {e}")
+        return [] # Return empty list on error
+    finally:
+        db.close()
+
+def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str: str = None, new_name: str = None):
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        if not shift:
+            print("Error: Shift not found.")
+            return None
+        
+        updated = False
+        if new_start_time_str is not None:
+            new_start_time_dt = _parse_datetime(new_start_time_str)
+            if new_start_time_dt:
+                shift.start_time = new_start_time_dt
+                updated = True
+            else:
+                print("Warning: Invalid new start time format, not updated.")
+        if new_end_time_str is not None:
+            new_end_time_dt = _parse_datetime(new_end_time_str)
+            if new_end_time_dt:
+                shift.end_time = new_end_time_dt
+                updated = True
+            else:
+                print("Warning: Invalid new end time format, not updated.")
+        if new_name is not None:
+            shift.name = new_name
+            updated = True
+        
+        if updated:
+            db.commit()
+            db.refresh(shift)
+        return shift
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error updating shift: {e}")
+        return None
+    finally:
+        db.close()
+
+def delete_shift(shift_id: int):
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        if not shift:
+            print("Error: Shift not found for deletion.")
+            return False
+        
+        db.delete(shift)
+        db.commit()
+        return True
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error deleting shift: {e}")
+        return False
+    finally:
+        db.close()
