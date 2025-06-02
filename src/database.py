@@ -22,9 +22,9 @@ def get_database_url():
 def initialize_database_for_application():
     """Initializes or re-initializes the global engine and SessionLocal."""
     global engine, SessionLocal
-    
+
     current_db_url = get_database_url()
-    
+
     if engine is None or str(engine.url) != current_db_url:
         # print(f"Initializing database with URL: {current_db_url}")
         connect_args = {}
@@ -33,7 +33,7 @@ def initialize_database_for_application():
 
         engine = create_engine(current_db_url, connect_args=connect_args)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
+
     # Models need to be imported for Base.metadata to be populated before create_all
     # It's assumed they are imported by the time this is called in a real app,
     # or by tests before they call create_all.
@@ -62,7 +62,7 @@ def init_db():
     initialize_database_for_application()
     # The create_tables() call is often done explicitly at app startup or by tests.
     # For the CLI app, creating tables if they don't exist on each run via main.py is okay.
-    create_tables() 
+    create_tables()
     if os.environ.get("TEST_MODE_ENABLED") != "1":
         print("Database initialized (tables created if they didn't exist).")
 

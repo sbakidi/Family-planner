@@ -10,7 +10,7 @@ def display_main_menu():
         print("2. Login")
     else:
         # Assuming User object has 'name'. If current_user is just user_id, this needs adjustment.
-        user_name = current_user.name if hasattr(current_user, 'name') else current_user 
+        user_name = current_user.name if hasattr(current_user, 'name') else current_user
         print(f"Logged in as: {user_name}")
         print("3. Add Shift")
         print("4. View My Shifts")
@@ -18,9 +18,9 @@ def display_main_menu():
         print("6. View My Children")
         print("7. Create Event")
         print("8. View My User Events")
-        # Option 9 (View Child Events) might be too specific for this initial CLI, 
+        # Option 9 (View Child Events) might be too specific for this initial CLI,
         # but including for completeness based on example.
-        print("9. View My Child Events (Specify Child ID)") 
+        print("9. View My Child Events (Specify Child ID)")
         print("10. Logout")
     print("0. Exit")
     return input("Choose an option: ")
@@ -55,14 +55,14 @@ def handle_add_shift():
     if not current_user:
         print("Error: You must be logged in to add a shift.")
         return
-    
+
     print("\n--- Add New Shift ---")
     # Assuming current_user is a User object with a user_id attribute
-    user_id = current_user.user_id 
+    user_id = current_user.user_id
     start_time = input("Enter shift start time (e.g., YYYY-MM-DD HH:MM): ")
     end_time = input("Enter shift end time (e.g., YYYY-MM-DD HH:MM): ")
     name = input("Enter shift name/description: ")
-    
+
     shift = shift_manager.add_shift(user_id, start_time, end_time, name)
     if shift:
         print(f"Shift '{shift.name}' added successfully with ID: {shift.shift_id}")
@@ -94,7 +94,7 @@ def handle_add_child():
     date_of_birth = input("Enter child's date of birth (e.g., YYYY-MM-DD): ")
     # For simplicity, school_info and custody_schedule are not taken as input here
     # They can be updated later if needed via a dedicated update function.
-    
+
     child = child_manager.add_child(user_id, name, date_of_birth)
     if child:
         print(f"Child '{child.name}' added successfully with ID: {child.child_id}")
@@ -126,10 +126,10 @@ def handle_create_event():
     description = input("Enter event description: ")
     start_time = input("Enter event start time (e.g., YYYY-MM-DD HH:MM): ")
     end_time = input("Enter event end time (e.g., YYYY-MM-DD HH:MM): ")
-    
+
     linked_user_id = None
     linked_child_id = None
-    
+
     link_choice = input("Link event to user (u), child (c), or neither (n)? [n]: ").lower()
     if link_choice == 'u':
         linked_user_id = current_user.user_id
@@ -175,10 +175,10 @@ def handle_view_my_child_events():
         return
 
     print("\n--- Child Events ---")
-    # Simplified: Ask for child_id. 
+    # Simplified: Ask for child_id.
     # Better UX: List user's children, let them pick.
     child_id_input = input("Enter child ID to view events for: ")
-    
+
     # Validate child exists and belongs to user
     user_children = child_manager.get_user_children(current_user.user_id)
     if not any(c.child_id == child_id_input for c in user_children):
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     # For web apps, this is often part of a startup script or migration process.
     try:
         from src.database import init_db
-        init_db() 
+        init_db()
         # You might want to import models here too if init_db needs them to be defined
         # For example, if init_db() itself doesn't import them for Base.metadata.create_all()
         from src import user, shift, child, event # Ensure models are loaded for init_db
@@ -208,11 +208,11 @@ if __name__ == "__main__":
         print(f"Error initializing database: {e}")
         # Decide if the app should exit or continue if DB init fails.
         # For this application, it's likely critical.
-        # exit(1) 
+        # exit(1)
 
     while True:
         choice = display_main_menu()
-        
+
         if not current_user:
             if choice == '1':
                 handle_register()

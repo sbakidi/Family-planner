@@ -22,7 +22,7 @@ class TestAuth(unittest.TestCase):
         # Ensure all models are known to Base
         # This might require importing all model files if not already done by initialize_database_for_application
         # For example: from src import user, shift, child, event # if they define models
-        
+
     def setUp(self):
         # Create tables before each test
         # This ensures models are registered with Base.metadata
@@ -48,7 +48,7 @@ class TestAuth(unittest.TestCase):
         self.assertIsNotNone(user_in_db)
         self.assertEqual(user_in_db.name, "Test User")
         self.assertEqual(user_in_db.id, registered_user.id)
-        
+
         # Check hashed password (optional, implementation detail)
         expected_hash = hashlib.sha256("password123".encode()).hexdigest()
         self.assertEqual(user_in_db.hashed_password, expected_hash)
@@ -56,7 +56,7 @@ class TestAuth(unittest.TestCase):
     def test_register_existing_user(self):
         # First, register a user
         auth.register("Test User", "test@example.com", "password123")
-        
+
         # Try to register the same email again
         user2 = auth.register("Another User", "test@example.com", "password456")
         self.assertIsNone(user2) # Should return None if email already exists
@@ -68,7 +68,7 @@ class TestAuth(unittest.TestCase):
     def test_login_correct_credentials(self):
         # Register a user first (directly or via auth.register)
         auth.register("Test User", "test@example.com", "password123")
-        
+
         # Try to login
         logged_in_user = auth.login("test@example.com", "password123")
         self.assertIsNotNone(logged_in_user)
@@ -81,7 +81,7 @@ class TestAuth(unittest.TestCase):
 
     def test_login_incorrect_password(self):
         auth.register("Test User", "test@example.com", "password123")
-        
+
         logged_in_user = auth.login("test@example.com", "wrongpassword")
         self.assertIsNone(logged_in_user)
 

@@ -25,7 +25,7 @@ class TestEventManager(unittest.TestCase):
     def setUp(self):
         create_tables()
         self.db = SessionLocal()
-        
+
         # Create dummy user and child for linking events
         self.test_user = auth.register("Event User", "eventuser@example.com", "pass")
         self.assertIsNotNone(self.test_user)
@@ -49,9 +49,9 @@ class TestEventManager(unittest.TestCase):
         start_str = "2024-12-25 14:00"
         end_str = "2024-12-25 17:00"
         event = event_manager.create_event(
-            title="Birthday Party", 
-            description="Party for Test Child", 
-            start_time_str=start_str, 
+            title="Birthday Party",
+            description="Party for Test Child",
+            start_time_str=start_str,
             end_time_str=end_str,
             linked_child_id=self.test_child_id
         )
@@ -71,9 +71,9 @@ class TestEventManager(unittest.TestCase):
         start_str = "2024-11-10 10:00"
         end_str = "2024-11-10 11:00"
         event = event_manager.create_event(
-            title="User Meeting", 
-            description="Meeting for Test User", 
-            start_time_str=start_str, 
+            title="User Meeting",
+            description="Meeting for Test User",
+            start_time_str=start_str,
             end_time_str=end_str,
             linked_user_id=self.test_user_id
         )
@@ -98,7 +98,7 @@ class TestEventManager(unittest.TestCase):
         event2 = event_manager.create_event("User Event 2", "", "2024-01-02 10:00", "2024-01-02 11:00", linked_user_id=self.test_user_id)
         event_manager.create_event("Other User Event", "", "2024-01-01 10:00", "2024-01-01 11:00", linked_user_id=self.another_user_id)
         event_manager.create_event("Child-only Event", "", "2024-01-01 10:00", "2024-01-01 11:00", linked_child_id=self.test_child_id)
-        
+
         user_events = event_manager.get_events_for_user(self.test_user_id)
         self.assertEqual(len(user_events), 2)
         event_ids_retrieved = [e.id for e in user_events]
@@ -113,7 +113,7 @@ class TestEventManager(unittest.TestCase):
         event1 = event_manager.create_event("Child Event 1", "", "2024-01-01 10:00", "2024-01-01 11:00", linked_child_id=self.test_child_id)
         event2 = event_manager.create_event("Child Event 2", "", "2024-01-02 10:00", "2024-01-02 11:00", linked_child_id=self.test_child_id)
         event_manager.create_event("Other Child Event", "", "2024-01-01 10:00", "2024-01-01 11:00", linked_child_id=self.another_child_id)
-        
+
         child_events = event_manager.get_events_for_child(self.test_child_id)
         self.assertEqual(len(child_events), 2)
         event_ids_retrieved = [e.id for e in child_events]
@@ -127,17 +127,17 @@ class TestEventManager(unittest.TestCase):
     def test_update_event_found(self):
         event = event_manager.create_event("Original Title", "Desc", "2024-01-01 10:00", "2024-01-01 11:00")
         updated_event = event_manager.update_event(
-            event.id, 
-            title="Updated Title", 
+            event.id,
+            title="Updated Title",
             linked_user_id=self.test_user_id,
             start_time_str="2024-01-01 10:30"
         )
-        
+
         self.assertIsNotNone(updated_event)
         self.assertEqual(updated_event.title, "Updated Title")
         self.assertEqual(updated_event.user_id, self.test_user_id)
         self.assertEqual(updated_event.start_time, datetime.strptime("2024-01-01 10:30", '%Y-%m-%d %H:%M'))
-        
+
         # Verify in DB
         retrieved_event = self.db.query(Event).filter_by(id=event.id).first()
         self.assertEqual(retrieved_event.title, "Updated Title")
@@ -160,23 +160,23 @@ class TestEventManager(unittest.TestCase):
     def test_delete_event_found(self):
         event1 = event_manager.create_event("Event 1", "", "2024-01-01 10:00", "2024-01-01 11:00")
         event2 = event_manager.create_event("Event 2", "", "2024-01-02 10:00", "2024-01-02 11:00")
-        
+
         count_before = self.db.query(Event).count()
         self.assertEqual(count_before, 2)
-        
+
         result = event_manager.delete_event(event1.id)
         self.assertTrue(result)
-        
+
         count_after = self.db.query(Event).count()
         self.assertEqual(count_after, 1)
-        
+
         remaining_event = self.db.query(Event).first()
         self.assertEqual(remaining_event.id, event2.id)
 
     def test_delete_event_not_found(self):
         event_manager.create_event("Event 1", "", "2024-01-01 10:00", "2024-01-01 11:00")
         non_existent_event_id = 99999
-        
+
         result = event_manager.delete_event(non_existent_event_id)
         self.assertFalse(result)
         self.assertEqual(self.db.query(Event).count(), 1)

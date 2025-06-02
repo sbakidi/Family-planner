@@ -16,17 +16,17 @@ def register(name, email, password):
         if existing_user:
             print("Error: Email already exists.")
             return None
-        
+
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        
+
         # Note: User.id is an auto-incrementing Integer PK.
         # The previous user_id (uuid) is not directly used here unless the model changes.
         new_user = User(name=name, email=email, hashed_password=hashed_password)
-        
+
         db.add(new_user)
         db.commit()
         db.refresh(new_user) # To get the auto-generated ID
-        
+
         # The returned User object is now an SQLAlchemy model instance.
         # The CLI (main.py) expects a User object with attributes like id, name, email.
         # The previous User class had user_id, name, email. The SQLAlchemy User model has id, name, email.
@@ -47,7 +47,7 @@ def login(email, password):
         if not user:
             print("Error: Email not found.")
             return None
-        
+
         # Verify password
         password_hash_to_check = hashlib.sha256(password.encode()).hexdigest()
         if user.hashed_password == password_hash_to_check:

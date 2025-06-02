@@ -24,7 +24,7 @@ class TestChildManager(unittest.TestCase):
     def setUp(self):
         create_tables()
         self.db = SessionLocal()
-        
+
         # Create dummy users (parents)
         self.parent1 = auth.register("Parent One", "parent1@example.com", "pass1")
         self.parent2 = auth.register("Parent Two", "parent2@example.com", "pass2")
@@ -40,7 +40,7 @@ class TestChildManager(unittest.TestCase):
     def test_add_child(self):
         dob_str = "2020-01-01"
         child = child_manager.add_child(self.parent1_id, "Test Child", dob_str, school_info="Playschool")
-        
+
         self.assertIsNotNone(child)
         self.assertIsInstance(child, Child)
         self.assertEqual(child.name, "Test Child")
@@ -71,7 +71,7 @@ class TestChildManager(unittest.TestCase):
         child2 = child_manager.add_child(self.parent1_id, "Child Two", "2021-01-01")
         # Child belonging to another parent (parent2)
         child_manager.add_child(self.parent2_id, "Other Parent Child", "2019-01-01")
-        
+
         parent1_children = child_manager.get_user_children(self.parent1_id)
         self.assertEqual(len(parent1_children), 2)
         child_ids_retrieved = [c.id for c in parent1_children]
@@ -85,22 +85,22 @@ class TestChildManager(unittest.TestCase):
 
     def test_update_child_info_found(self):
         child = child_manager.add_child(self.parent1_id, "Original Name", "2020-01-01")
-        
+
         updated_name = "Updated Name"
         updated_dob_str = "2020-02-02"
         updated_school = "New School"
         updated_child = child_manager.update_child_info(
-            child.id, 
-            name=updated_name, 
-            date_of_birth_str=updated_dob_str, 
+            child.id,
+            name=updated_name,
+            date_of_birth_str=updated_dob_str,
             school_info=updated_school
         )
-        
+
         self.assertIsNotNone(updated_child)
         self.assertEqual(updated_child.name, updated_name)
         self.assertEqual(updated_child.date_of_birth, date(2020, 2, 2))
         self.assertEqual(updated_child.school_info, updated_school)
-        
+
         # Verify in DB
         child_in_db = self.db.query(Child).filter_by(id=child.id).first()
         self.assertEqual(child_in_db.name, updated_name)
@@ -113,15 +113,15 @@ class TestChildManager(unittest.TestCase):
     def test_remove_child_found(self):
         child = child_manager.add_child(self.parent1_id, "Test Child", "2020-01-01")
         child_id = child.id
-        
+
         # Ensure child is in parent's list
         self.db.refresh(self.parent1) # Refresh to see relationship change
         self.assertIn(child, self.parent1.children)
-        
+
         count_before = self.db.query(Child).count()
         result = child_manager.remove_child(child_id)
         self.assertTrue(result)
-        
+
         count_after = self.db.query(Child).count()
         self.assertEqual(count_after, count_before - 1)
         self.assertIsNone(self.db.query(Child).filter_by(id=child_id).first())
@@ -138,14 +138,14 @@ class TestChildManager(unittest.TestCase):
 
     def test_add_parent_to_child_success(self):
         child = child_manager.add_child(self.parent1_id, "Test Child", "2020-01-01")
-        
+
         # Initially, only parent1 is associated
         self.assertIn(self.parent1, child.parents)
         self.assertNotIn(self.parent2, child.parents)
-        
+
         result = child_manager.add_parent_to_child(child.id, self.parent2_id)
         self.assertTrue(result)
-        
+
         # Verify in DB
         self.db.refresh(child) # Refresh to see updated relationships
         self.assertIn(self.parent1, child.parents)

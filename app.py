@@ -16,7 +16,7 @@ try:
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
-    init_db() 
+    init_db()
 except Exception as e:
     print(f"Error initializing database during app startup: {e}")
     # Depending on the application, you might want to exit or log this critical error.
@@ -87,7 +87,7 @@ def login_user():
         else:
             # auth.login prints "Error: Email not found." or "Error: Incorrect password."
             return jsonify(message="Login failed: Invalid email or password."), 401 # Unauthorized
-            
+
     except Exception as e:
         print(f"Error in /auth/login: {e}")
         return jsonify(message="An unexpected error occurred during login."), 500
@@ -99,7 +99,7 @@ def logout_user():
     # Server-side logout might involve invalidating a token if using a denylist.
     # For this basic version, we just acknowledge the request.
     # auth.logout() itself just prints a message.
-    auth.logout() 
+    auth.logout()
     return jsonify(message="Logout successful"), 200
 
 
@@ -172,13 +172,13 @@ def api_add_parent_to_child(child_id):
     data = request.get_json()
     if not data or 'user_id' not in data:
         return jsonify(message="Missing user_id (for parent) in request"), 400
-    
+
     other_parent_user_id = data['user_id']
-    
+
     # child_manager.add_parent_to_child handles logic for existence of child/user
     # and if already a parent.
     success = child_manager.add_parent_to_child(child_id, other_parent_user_id)
-    
+
     if success:
         return jsonify(message="Parent added to child successfully"), 200
     else:
@@ -192,7 +192,7 @@ def api_add_parent_to_child(child_id):
             return jsonify(message="Child not found"), 404
         if not user_exists:
             return jsonify(message="User (parent) not found"), 404
-        
+
         # If both exist, the failure was likely due to already being a parent (or other logic in manager)
         return jsonify(message="Failed to add parent. User might already be a parent or other error."), 400
 
@@ -294,7 +294,7 @@ def api_create_user_shift_pattern(user_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
         return jsonify(message="Missing name, pattern_type, or definition"), 400
-    
+
     # Optional: Validate user_id exists
     db = SessionLocal()
     target_user = db.query(user.User).filter(user.User.id == user_id).first()
@@ -333,7 +333,7 @@ def api_get_user_shift_patterns(user_id):
     db.close()
     if not target_user:
         return jsonify(message=f"User with id {user_id} not found."), 404
-        
+
     patterns = shift_pattern_manager.get_shift_patterns_for_user(user_id)
     return jsonify([p.to_dict() for p in patterns]), 200
 
@@ -343,18 +343,18 @@ def api_update_shift_pattern(pattern_id):
     if not data:
         return jsonify(message="No data provided for update"), 400
 
-    # Basic ownership/admin check - This is simplified. 
+    # Basic ownership/admin check - This is simplified.
     # A real app would use @jwt_required or similar and check current_user.id
     # For now, we'll assume if a pattern has a user_id, only that user can update it.
     # Global patterns (user_id=None) might be admin-only. This logic is NOT fully implemented here.
-    
+
     # pattern_to_update = shift_pattern_manager.get_shift_pattern(pattern_id)
     # if not pattern_to_update:
     #     return jsonify(message="Shift pattern not found"), 404
     # if pattern_to_update.user_id is not None:
     #     # This is a user-specific pattern, implement ownership check if auth is integrated
     #     # For example: if current_user.id != pattern_to_update.user_id: return jsonify(message="Forbidden"), 403
-    #     pass 
+    #     pass
 
     updated_pattern = shift_pattern_manager.update_shift_pattern(
         pattern_id=pattern_id,
@@ -404,7 +404,7 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
     except ValueError as ve:
         db.rollback()
         # ValueError is raised by manager for known issues like "not found" or "invalid date"
-        return jsonify(message=str(ve)), 400 
+        return jsonify(message=str(ve)), 400
     except SQLAlchemyError as sqla_e: # Catch potential DB errors not caught by manager
         db.rollback()
         print(f"SQLAlchemyError during shift generation: {sqla_e}")
@@ -436,7 +436,7 @@ def register():
         if not name or not email or not password:
             flash('All fields are required.', 'danger')
             return render_template('register.html'), 400
-        
+
         new_user = auth.register(name=name, email=email, password=password)
 
         if new_user:
@@ -493,10 +493,10 @@ def shifts_view():
     if 'user_id' not in session:
         flash('Please login to view your shifts.', 'warning')
         return redirect(url_for('login'))
-    
+
     user_id = session['user_id']
     user_shifts = shift_manager.get_user_shifts(user_id=user_id) # Managers handle their own sessions
-    
+
     return render_template('shifts.html', shifts=user_shifts)
 
 @app.route('/shifts/add', methods=['POST'])
@@ -522,9 +522,9 @@ def add_shift():
         return redirect(url_for('shifts_view'))
 
     new_shift = shift_manager.add_shift(
-        user_id=user_id, 
-        name=name, 
-        start_time_str=start_time_formatted, 
+        user_id=user_id,
+        name=name,
+        start_time_str=start_time_formatted,
         end_time_str=end_time_formatted
     ) # Managers handle their own sessions
 
@@ -532,7 +532,7 @@ def add_shift():
         flash('Shift added successfully!', 'success')
     else:
         flash('Failed to add shift. Please check your input or try again.', 'danger')
-            
+
     return redirect(url_for('shifts_view'))
 
 
@@ -547,18 +547,18 @@ def events_view():
     if 'user_id' not in session:
         flash('Please login to view your events.', 'warning')
         return redirect(url_for('login'))
-    
+
     user_id = session['user_id']
     # Managers handle their own DB sessions
     user_events = event_manager.get_events_for_user(user_id=user_id)
     user_children = child_manager.get_user_children(user_id=user_id) # For the dropdown
-    
+
     # Enhance event objects with child names if linked
     # This is a bit inefficient here; ideally, a JOIN in the query or a method in the model would do this.
     # For now, let's try to add child names if a child_id exists for simplicity in template.
     # This is not ideal as it leads to N+1 queries if not careful or if ORM doesn't auto-load.
     # event_manager.get_events_for_user already returns Event objects with child relationship loaded if accessed.
-    
+
     return render_template('events.html', events=user_events, children=user_children)
 
 @app.route('/events/add-web', methods=['POST'])
@@ -614,7 +614,7 @@ def add_event_web():
     else:
         # event_manager.create_event prints detailed errors
         flash('Failed to add event. Please check your input or try again.', 'danger')
-            
+
     return redirect(url_for('events_view'))
 
 
@@ -625,11 +625,11 @@ def children_view():
     if 'user_id' not in session:
         flash('Please login to view your children.', 'warning')
         return redirect(url_for('login'))
-    
+
     user_id = session['user_id']
     # child_manager.get_user_children expects user_id and handles its own DB session
     user_children = child_manager.get_user_children(user_id=user_id)
-    
+
     return render_template('children.html', children=user_children)
 
 @app.route('/children/add-web', methods=['POST']) # Renamed to avoid API conflict
@@ -651,9 +651,9 @@ def add_child_web():
     # child_manager.add_child expects date_of_birth_str in '%Y-%m-%d' format, which HTML date input provides.
     # It also handles its own DB session.
     new_child = child_manager.add_child(
-        user_id=user_id, 
-        name=name, 
-        date_of_birth_str=date_of_birth_str, 
+        user_id=user_id,
+        name=name,
+        date_of_birth_str=date_of_birth_str,
         school_info=school_info
         # custody_schedule_info=custody_schedule_info # Pass if using the old field
     )
@@ -663,7 +663,7 @@ def add_child_web():
     else:
         # child_manager.add_child prints detailed errors
         flash('Failed to add child. Please check your input or try again.', 'danger')
-            
+
     return redirect(url_for('children_view'))
 
 
@@ -706,14 +706,14 @@ def api_add_residency_period(child_id):
 def api_get_residency_periods_for_child(child_id):
     start_date_filter = request.args.get('start_date') # YYYY-MM-DD
     end_date_filter = request.args.get('end_date')     # YYYY-MM-DD
-    
+
     db = SessionLocal()
     try:
         # Validate child_id exists
         target_child = db.query(child.Child).filter(child.Child.id == child_id).first()
         if not target_child:
             return jsonify(message="Child not found"), 404
-            
+
         periods = child_manager.get_residency_periods_for_child(
             db_session=db,
             child_id=child_id,
@@ -804,7 +804,7 @@ def api_get_child_residency_on_date(child_id):
         if not target_child:
             db.close()
             return jsonify(message="Child not found"), 404
-            
+
         active_periods = child_manager.get_child_residency_on_date(
             db_session=db,
             child_id=child_id,
@@ -814,7 +814,7 @@ def api_get_child_residency_on_date(child_id):
         # we just return all. A more sophisticated logic might be needed to pick the most relevant one.
         if not active_periods:
             return jsonify(message=f"No residency period found for child {child_id} on {date_param}."), 404
-        
+
         # Return details of the parent(s) the child is with.
         # If multiple periods, this will list them all.
         return jsonify([p.to_dict(include_child=False, include_parent=True) for p in active_periods]), 200

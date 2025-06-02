@@ -29,7 +29,7 @@ class User(Base):
         secondary=user_child_association_table,
         back_populates="parents"
     )
-    
+
     # Relationship to ResidencyPeriods where this user is the custodian parent
     custodial_periods = relationship("ResidencyPeriod", foreign_keys="ResidencyPeriod.parent_id", backref="custodian_parent", lazy="dynamic") # Added lazy dynamic for example
 
@@ -42,7 +42,7 @@ class User(Base):
     # Specifically, auth.register created a User object with user_id=uuid, name, email.
     # This will need to change to align with the new model.
     # For now, the focus is on the model definition.
-    
+
     def __repr__(self):
         return f"<User(id={self.id}, name='{self.name}', email='{self.email}')>"
 
@@ -57,10 +57,10 @@ class User(Base):
             data['shifts'] = [shift.to_dict(include_owner=False) for shift in self.shifts]
         if include_children and self.children: # Check if self.children is not None
             data['children'] = [child.to_dict(include_parents=False) for child in self.children]
-        
+
         if include_shift_patterns and hasattr(self, 'shift_patterns') and self.shift_patterns: # Check if self.shift_patterns is not None
            data['shift_patterns'] = [pattern.to_dict() for pattern in self.shift_patterns]
-        
+
         if include_custodial_periods and hasattr(self, 'custodial_periods') and self.custodial_periods: # Check if self.custodial_periods is not None
             # If lazy='dynamic', self.custodial_periods is a query object, so use .all() or iterate
             periods_to_serialize = self.custodial_periods.all() if hasattr(self.custodial_periods, 'all') else self.custodial_periods

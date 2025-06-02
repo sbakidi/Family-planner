@@ -54,18 +54,18 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
         raise ValueError("Start date cannot be after end date.")
 
     created_shifts = []
-    
+
     if pattern.pattern_type == 'Rotating':
-        # Example definition: {"cycle": [{"name": "Day", "days": 2, "start_time": "08:00", "end_time": "16:00"}, 
+        # Example definition: {"cycle": [{"name": "Day", "days": 2, "start_time": "08:00", "end_time": "16:00"},
         #                              {"name": "Night", "days": 2, "start_time": "20:00", "end_time": "04:00"}, # Overnight
-        #                              {"name": "Off", "days": 3}], 
+        #                              {"name": "Off", "days": 3}],
         #                   "cycle_start_reference_date": "2024-01-01"}
         if not pattern.definition or 'cycle' not in pattern.definition or 'cycle_start_reference_date' not in pattern.definition:
             raise ValueError("Invalid Rotating pattern definition. Missing 'cycle' or 'cycle_start_reference_date'.")
 
         cycle_def = pattern.definition['cycle']
         cycle_start_ref_date = date.fromisoformat(pattern.definition['cycle_start_reference_date'])
-        
+
         total_cycle_days = sum(item['days'] for item in cycle_def)
         if total_cycle_days == 0:
             raise ValueError("Rotating pattern cycle has zero total days.")
@@ -74,7 +74,7 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
         while current_date <= end_date_obj:
             days_from_ref = (current_date - cycle_start_ref_date).days
             current_day_in_cycle = days_from_ref % total_cycle_days
-            
+
             # Determine current segment in cycle
             temp_days_count = 0
             current_segment = None
@@ -83,7 +83,7 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                     current_segment = segment
                     break
                 temp_days_count += segment['days']
-            
+
             if current_segment and current_segment.get('name', '').lower() != 'off':
                 shift_name = current_segment['name']
                 start_time_str = current_segment.get('start_time')
@@ -99,7 +99,7 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
 
                 if shift_end_datetime < shift_start_datetime: # Overnight shift
                     shift_end_datetime += timedelta(days=1)
-                
+
                 from src.shift import Shift # Local import to avoid circular dependency issues at module level
                 new_shift = Shift(
                     name=shift_name,
@@ -110,15 +110,15 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                 )
                 db_session.add(new_shift)
                 created_shifts.append(new_shift)
-            
+
             current_date += timedelta(days=1)
 
     elif pattern.pattern_type == 'Fixed':
-        # Example definition: {"monday": {"name": "Mon Work", "start_time": "09:00", "end_time": "17:00"}, 
+        # Example definition: {"monday": {"name": "Mon Work", "start_time": "09:00", "end_time": "17:00"},
         #                      "tuesday": "Off", ...}
         if not pattern.definition:
             raise ValueError("Invalid Fixed pattern definition. It's empty.")
-            
+
         current_date = start_date_obj
         while current_date <= end_date_obj:
             day_name = current_date.strftime("%A").lower() # Monday, Tuesday, ...
@@ -133,7 +133,7 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                     print(f"Warning: Skipping fixed shift for {current_date} due to missing start/end time in segment {shift_name}")
                     current_date += timedelta(days=1)
                     continue
-                
+
                 shift_start_datetime = datetime.combine(current_date, datetime.strptime(start_time_str, "%H:%M").time())
                 shift_end_datetime = datetime.combine(current_date, datetime.strptime(end_time_str, "%H:%M").time())
 
@@ -150,13 +150,13 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                 )
                 db_session.add(new_shift)
                 created_shifts.append(new_shift)
-            
+
             current_date += timedelta(days=1)
     else:
         raise ValueError(f"Unsupported pattern type: {pattern.pattern_type}")
 
     # Commit is done by the caller (API endpoint) to manage session lifecycle
-    # db_session.commit() 
+    # db_session.commit()
     return created_shifts
 
 def get_shift_pattern(pattern_id: int):
@@ -193,7 +193,7 @@ def get_global_shift_patterns():
     finally:
         db.close()
 
-def update_shift_pattern(pattern_id: int, name: str = None, description: str = None, 
+def update_shift_pattern(pattern_id: int, name: str = None, description: str = None,
                          pattern_type: str = None, definition: dict = None):
     db = SessionLocal()
     try:
@@ -201,7 +201,7 @@ def update_shift_pattern(pattern_id: int, name: str = None, description: str = N
         if not pattern:
             print("Error: Shift pattern not found.")
             return None
-        
+
         updated = False
         if name is not None:
             pattern.name = name
@@ -215,7 +215,7 @@ def update_shift_pattern(pattern_id: int, name: str = None, description: str = N
         if definition is not None:
             pattern.definition = definition
             updated = True
-        
+
         if updated:
             db.commit()
             db.refresh(pattern)
@@ -234,7 +234,7 @@ def delete_shift_pattern(pattern_id: int):
         if not pattern:
             print("Error: Shift pattern not found for deletion.")
             return False
-        
+
         db.delete(pattern)
         db.commit()
         return True

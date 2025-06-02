@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from src.database import Base
 from src.user import user_child_association_table
 # Import ResidencyPeriod for the relationship
-from src.residency_period import ResidencyPeriod 
+from src.residency_period import ResidencyPeriod
 
 class Child(Base):
     __tablename__ = "children"
@@ -37,7 +37,7 @@ class Child(Base):
         }
         if include_parents and self.parents:
             data['parents'] = [{"id": parent.id, "name": parent.name} for parent in self.parents]
-        
+
         # Placeholder for events if that relationship exists and is needed
         # if include_events and hasattr(self, 'events'):
         # data['events'] = [event.to_dict(include_child=False) for event in self.events]

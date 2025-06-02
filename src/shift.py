@@ -10,7 +10,7 @@ class Shift(Base):
     name = Column(String, index=True)
     start_time = Column(DateTime)
     end_time = Column(DateTime)
-    
+
     user_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="shifts")
 
@@ -32,7 +32,7 @@ class Shift(Base):
         }
         if include_owner and self.owner:
             data['owner'] = {"id": self.owner.id, "name": self.owner.name}
-        
+
         if include_source_pattern_details and self.source_pattern:
             # Simple representation of the source pattern
             data['source_pattern_details'] = {

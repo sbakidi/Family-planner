@@ -9,8 +9,8 @@
         <ul>
             {% for shift in shifts %}
                 <li>
-                    <strong>{{ shift.name }}</strong>: 
-                    From {{ shift.start_time.strftime('%Y-%m-%d %H:%M') if shift.start_time else 'N/A' }} 
+                    <strong>{{ shift.name }}</strong>:
+                    From {{ shift.start_time.strftime('%Y-%m-%d %H:%M') if shift.start_time else 'N/A' }}
                     to {{ shift.end_time.strftime('%Y-%m-%d %H:%M') if shift.end_time else 'N/A' }}
                     {% if shift.source_pattern_id %}
                         (From Pattern #{{ shift.source_pattern_id }})

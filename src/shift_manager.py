@@ -31,9 +31,9 @@ def add_shift(user_id: int, start_time_str: str, end_time_str: str, name: str):
 
         # Assuming user_id is the integer PK from the User model
         new_shift = Shift(
-            user_id=user_id, 
-            start_time=start_time_dt, 
-            end_time=end_time_dt, 
+            user_id=user_id,
+            start_time=start_time_dt,
+            end_time=end_time_dt,
             name=name
         )
         db.add(new_shift)
@@ -66,7 +66,7 @@ def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str
         if not shift:
             print("Error: Shift not found.")
             return None
-        
+
         updated = False
         if new_start_time_str is not None:
             new_start_time_dt = _parse_datetime(new_start_time_str)
@@ -85,7 +85,7 @@ def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str
         if new_name is not None:
             shift.name = new_name
             updated = True
-        
+
         if updated:
             db.commit()
             db.refresh(shift)
@@ -104,7 +104,7 @@ def delete_shift(shift_id: int):
         if not shift:
             print("Error: Shift not found for deletion.")
             return False
-        
+
         db.delete(shift)
         db.commit()
         return True

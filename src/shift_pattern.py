@@ -9,7 +9,7 @@ class ShiftPattern(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     pattern_type = Column(String, nullable=False)  # e.g., 'Fixed', 'Rotating', 'OnDemand'
-    definition = Column(JSON, nullable=False) 
+    definition = Column(JSON, nullable=False)
     # Example for Rotating: {"cycle": [{"shift_type_name": "Day", "days": 2}, ...], "start_date_of_cycle": "YYYY-MM-DD"}
     # Example for Fixed: {"monday": "Day Shift", "tuesday": "Day Shift", ...}
 

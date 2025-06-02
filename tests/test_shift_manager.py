@@ -25,7 +25,7 @@ class TestShiftManager(unittest.TestCase):
     def setUp(self):
         create_tables()
         self.db = SessionLocal()
-        
+
         # Create a dummy user for testing shift operations
         # Note: auth.register now uses SQLAlchemy and will commit this user.
         self.test_user = auth.register("Test ShiftUser", "shiftuser@example.com", "password")
@@ -44,7 +44,7 @@ class TestShiftManager(unittest.TestCase):
         start_time_str = "2024-01-01 09:00"
         end_time_str = "2024-01-01 17:00"
         shift = shift_manager.add_shift(self.test_user_id, start_time_str, end_time_str, "Day Shift")
-        
+
         self.assertIsNotNone(shift)
         self.assertIsInstance(shift, Shift)
         self.assertEqual(shift.user_id, self.test_user_id)
@@ -61,7 +61,7 @@ class TestShiftManager(unittest.TestCase):
         shift_manager.add_shift(self.test_user_id, "2024-01-01 09:00", "2024-01-01 17:00", "Day Shift")
         shift_manager.add_shift(self.test_user_id, "2024-01-02 09:00", "2024-01-02 17:00", "Next Day Shift")
         shift_manager.add_shift(self.another_user_id, "2024-01-01 10:00", "2024-01-01 18:00", "Other User Shift")
-        
+
         user_shifts = shift_manager.get_user_shifts(self.test_user_id)
         self.assertEqual(len(user_shifts), 2)
         self.assertTrue(all(s.user_id == self.test_user_id for s in user_shifts))
@@ -70,18 +70,18 @@ class TestShiftManager(unittest.TestCase):
         # User exists but has no shifts
         user_shifts = shift_manager.get_user_shifts(self.test_user_id)
         self.assertEqual(len(user_shifts), 0)
-        
+
         # User does not exist (simulated by a non-existent ID, though FK constraint might catch this earlier)
         # For this test, we'll rely on manager returning empty list for a valid user ID with no shifts.
         # Querying for a completely non-existent user_id is a different test case, likely for user management.
 
     def test_update_shift_found(self):
         original_shift = shift_manager.add_shift(self.test_user_id, "2024-01-01 09:00", "2024-01-01 17:00", "Original Name")
-        
+
         updated_name = "Updated Name"
         updated_start_str = "2024-01-01 08:00"
         updated_shift = shift_manager.update_shift(original_shift.id, new_name=updated_name, new_start_time_str=updated_start_str)
-        
+
         self.assertIsNotNone(updated_shift)
         self.assertEqual(updated_shift.name, updated_name)
         self.assertEqual(updated_shift.start_time, datetime.strptime(updated_start_str, '%Y-%m-%d %H:%M'))
@@ -100,26 +100,26 @@ class TestShiftManager(unittest.TestCase):
     def test_delete_shift_found(self):
         shift1 = shift_manager.add_shift(self.test_user_id, "2024-01-01 09:00", "2024-01-01 17:00", "Shift 1")
         shift2 = shift_manager.add_shift(self.test_user_id, "2024-01-02 09:00", "2024-01-02 17:00", "Shift 2")
-        
+
         count_before_delete = self.db.query(Shift).count()
         self.assertEqual(count_before_delete, 2)
-        
+
         result = shift_manager.delete_shift(shift1.id)
         self.assertTrue(result)
-        
+
         count_after_delete = self.db.query(Shift).count()
         self.assertEqual(count_after_delete, 1)
-        
+
         remaining_shift = self.db.query(Shift).first()
         self.assertEqual(remaining_shift.id, shift2.id)
 
     def test_delete_shift_not_found(self):
         shift_manager.add_shift(self.test_user_id, "2024-01-01 09:00", "2024-01-01 17:00", "Shift 1")
         non_existent_shift_id = 99999
-        
+
         result = shift_manager.delete_shift(non_existent_shift_id)
         self.assertFalse(result)
-        
+
         count_after_failed_delete = self.db.query(Shift).count()
         self.assertEqual(count_after_failed_delete, 1)
 

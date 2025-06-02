@@ -6,7 +6,7 @@ from datetime import datetime
 from src.database import SessionLocal
 from src.event import Event
 # User and Child models might be needed if we want to validate existence of user_id/child_id before linking
-# from src.user import User 
+# from src.user import User
 # from src.child import Child
 
 # events_storage is removed
@@ -21,7 +21,7 @@ def _parse_datetime(datetime_str: str):
         print(f"Warning: Could not parse datetime string: {datetime_str}")
         return None
 
-def create_event(title: str, description: str, start_time_str: str, end_time_str: str, 
+def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
                  linked_user_id: int = None, linked_child_id: int = None):
     db = SessionLocal()
     try:
@@ -34,9 +34,9 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
 
         # Note: linked_user_id and linked_child_id are now user_id and child_id in the Event model
         new_event = Event(
-            title=title, 
-            description=description, 
-            start_time=start_time_dt, 
+            title=title,
+            description=description,
+            start_time=start_time_dt,
             end_time=end_time_dt,
             user_id=linked_user_id, # This is the FK field in Event model
             child_id=linked_child_id # This is the FK field in Event model
@@ -87,8 +87,8 @@ def get_events_for_child(child_id: int):
     finally:
         db.close()
 
-def update_event(event_id: int, title: str = None, description: str = None, 
-                 start_time_str: str = None, end_time_str: str = None, 
+def update_event(event_id: int, title: str = None, description: str = None,
+                 start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
                  unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
     db = SessionLocal()
@@ -97,7 +97,7 @@ def update_event(event_id: int, title: str = None, description: str = None,
         if not event:
             print("Error: Event not found.")
             return None
-        
+
         updated = False
         if title is not None:
             event.title = title
@@ -119,21 +119,21 @@ def update_event(event_id: int, title: str = None, description: str = None,
                 updated = True
             else:
                 print("Warning: Invalid end time format, not updated.")
-        
+
         if unlink_user:
             event.user_id = None
             updated = True
         elif linked_user_id is not None:
             event.user_id = linked_user_id
             updated = True
-            
+
         if unlink_child:
             event.child_id = None
             updated = True
         elif linked_child_id is not None:
             event.child_id = linked_child_id
             updated = True
-        
+
         if updated:
             db.commit()
             db.refresh(event)
@@ -152,7 +152,7 @@ def delete_event(event_id: int):
         if not event:
             print("Error: Event not found for deletion.")
             return False
-        
+
         db.delete(event)
         db.commit()
         return True
