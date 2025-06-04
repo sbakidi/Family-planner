@@ -3,6 +3,7 @@ import json
 import os
 import hashlib # For direct user creation if needed, though auth API is preferred
 from datetime import datetime, timedelta
+import sys
 
 # Adjust path
 sys_path_updated = False
