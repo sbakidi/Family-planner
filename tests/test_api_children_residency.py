@@ -3,6 +3,7 @@ import json
 import os
 import hashlib
 from datetime import datetime, date, timedelta
+import sys
 
 # Adjust path
 sys_path_updated = False
