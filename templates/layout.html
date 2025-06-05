@@ -30,7 +30,7 @@
         <nav>
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
-                {% if session['user_id'] %}
+                {% if session.get('user_id') %}
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
                     {# Add other authenticated links here, e.g., Profile, Dashboard #}
                 {% else %}
