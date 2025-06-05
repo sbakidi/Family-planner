@@ -3,13 +3,13 @@ from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event, grocery, task, booking  # Models
+from datetime import datetime
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
 from src.notification import get_user_queue
 
-
-
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
+from src import analytics
 from src import residency_period
 
 # Initialize the database (create tables if they don't exist)
@@ -1074,6 +1074,16 @@ def add_child_web():
         flash('Failed to add child. Please check your input or try again.', 'danger')
 
     return redirect(url_for('children_view'))
+
+@app.route("/analytics")
+def analytics_view():
+    if "user_id" not in session:
+        flash("Please login to view analytics.", "warning")
+        return redirect(url_for("login"))
+    user_id = session["user_id"]
+    data = analytics.get_monthly_analytics(user_id)
+    return render_template("analytics.html", data=data)
+
 
 
 # The previous residency period POST route:

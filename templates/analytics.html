@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<h2>Monthly Analytics</h2>
+<canvas id="shiftsChart" height="100"></canvas>
+<canvas id="eventsChart" height="100"></canvas>
+<canvas id="residencyChart" height="100"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const analyticsData = {{ data | tojson }};
+    function buildDataset(key) {
+        const labels = analyticsData[key].map(item => item.month);
+        const counts = analyticsData[key].map(item => item.count);
+        return {labels: labels, data: counts};
+    }
+    const shifts = buildDataset('shifts');
+    const events = buildDataset('events');
+    const residency = buildDataset('residency_periods');
+
+    new Chart(document.getElementById('shiftsChart'), {
+        type: 'bar',
+        data: {labels: shifts.labels, datasets: [{label: 'Shifts', data: shifts.data, backgroundColor: 'rgba(75, 192, 192, 0.6)'}]}
+    });
+    new Chart(document.getElementById('eventsChart'), {
+        type: 'bar',
+        data: {labels: events.labels, datasets: [{label: 'Events', data: events.data, backgroundColor: 'rgba(54, 162, 235, 0.6)'}]}
+    });
+    new Chart(document.getElementById('residencyChart'), {
+        type: 'bar',
+        data: {labels: residency.labels, datasets: [{label: 'Residency Periods', data: residency.data, backgroundColor: 'rgba(255, 159, 64, 0.6)'}]}
+    });
+</script>
+{% endblock %}
