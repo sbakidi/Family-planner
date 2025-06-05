@@ -2,9 +2,10 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event, grocery, task  # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import # Managers and utilities
+from src import auth, user, shift, child, event, grocery, task, booking  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
 from src.notification import get_user_queue
+
 
 
 from src.database import init_db, SessionLocal
@@ -15,7 +16,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event, shift_swap, expense, task  # Models
+    from src import user, shift, child, event, shift_swap, expense, task, booking  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -370,6 +371,57 @@ def api_delete_task(task_id):
 
 
 # --- Shift Pattern API Endpoints ---
+
+@app.route('/bookings', methods=['POST'])
+def api_create_booking():
+    data = request.get_json()
+    if not data or not all(k in data for k in ('service', 'start_time', 'end_time', 'user_id')):
+        return jsonify(message="Missing required booking fields"), 400
+
+    booking_obj = booking_manager.create_booking(
+        service=data['service'],
+        start_time_str=data['start_time'],
+        end_time_str=data['end_time'],
+        user_id=data['user_id']
+    )
+    if booking_obj:
+        return jsonify(booking_obj.to_dict()), 201
+    return jsonify(message="Failed to create booking"), 400
+
+@app.route('/bookings/<int:booking_id>', methods=['GET'])
+def api_get_booking_details(booking_id):
+    booking = booking_manager.get_booking_details(booking_id)
+    if booking:
+        return jsonify(booking.to_dict()), 200
+    return jsonify(message="Booking not found"), 404
+
+@app.route('/users/<int:user_id>/bookings', methods=['GET'])
+def api_get_user_bookings(user_id):
+    bookings = booking_manager.get_bookings_for_user(user_id)
+    return jsonify([b.to_dict(include_user=False) for b in bookings]), 200
+
+@app.route('/bookings/<int:booking_id>', methods=['PUT'])
+def api_update_booking(booking_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No data provided for update"), 400
+
+    updated = booking_manager.update_booking(
+        booking_id=booking_id,
+        service=data.get('service'),
+        start_time_str=data.get('start_time'),
+        end_time_str=data.get('end_time')
+    )
+    if updated:
+        return jsonify(updated.to_dict()), 200
+    return jsonify(message="Booking not found or update failed"), 404
+
+@app.route('/bookings/<int:booking_id>', methods=['DELETE'])
+def api_delete_booking(booking_id):
+    if booking_manager.delete_booking(booking_id):
+        return jsonify(message="Booking deleted successfully"), 200
+    return jsonify(message="Booking not found or delete failed"), 404
+
 
 @app.route('/shift-patterns', methods=['POST'])
 def api_create_global_shift_pattern():
@@ -815,6 +867,53 @@ def add_event_web():
 
 
 
+
+# --- Booking Web Routes ---
+@app.route('/bookings', methods=['GET'])
+def bookings_view():
+    if 'user_id' not in session:
+        flash('Please login to view your bookings.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user_bookings = booking_manager.get_bookings_for_user(user_id=user_id)
+    return render_template('bookings.html', bookings=user_bookings)
+
+@app.route('/bookings/add-web', methods=['POST'])
+def add_booking_web():
+    if 'user_id' not in session:
+        flash('Please login to add a booking.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    service = request.form.get('service')
+    start_time_str_html = request.form.get('start_time')
+    end_time_str_html = request.form.get('end_time')
+
+    if not service or not start_time_str_html or not end_time_str_html:
+        flash('All fields are required for a booking.', 'danger')
+        return redirect(url_for('bookings_view'))
+
+    try:
+        start_formatted = datetime.fromisoformat(start_time_str_html).strftime('%Y-%m-%d %H:%M')
+        end_formatted = datetime.fromisoformat(end_time_str_html).strftime('%Y-%m-%d %H:%M')
+    except ValueError:
+        flash('Invalid datetime format submitted for booking.', 'danger')
+        return redirect(url_for('bookings_view'))
+
+    new_booking = booking_manager.create_booking(
+        service=service,
+        start_time_str=start_formatted,
+        end_time_str=end_formatted,
+        user_id=user_id
+    )
+    if new_booking:
+        flash('Booking added successfully!', 'success')
+    else:
+        flash('Failed to add booking. Please try again.', 'danger')
+
+    return redirect(url_for('bookings_view'))
+
 # --- Task Web Routes ---
 
 @app.route('/tasks', methods=['GET'])
@@ -924,6 +1023,7 @@ def add_expense():
     else:
         flash('Failed to add expense.', 'danger')
     return redirect(url_for('expenses_view'))
+
 
 
 
