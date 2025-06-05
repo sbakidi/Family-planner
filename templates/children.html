@@ -26,31 +26,32 @@
         <p>You have not added any children yet.</p>
     {% endif %}
 
-    <hr>
-
-    <h3>Add New Child</h3>
-    <form method="POST" action="{{ url_for('add_child_web') }}"> {# Changed action to avoid conflict with API #}
-        <div>
-            <label for="name">Child's Name:</label>
-            <input type="text" id="name" name="name" required>
-        </div>
-        <div>
-            <label for="date_of_birth">Date of Birth:</label>
-            <input type="date" id="date_of_birth" name="date_of_birth" required>
-        </div>
-        <div>
-            <label for="school_info">School Information (Optional):</label>
-            <input type="text" id="school_info" name="school_info">
-        </div>
-        {# Removing custody_schedule_info from this basic form as ResidencyPeriods are the preferred way #}
-        {# If a simple text field for old custody_schedule_info is still desired:
-        <div>
-            <label for="custody_schedule_info">Custody Notes (Optional):</label>
-            <textarea id="custody_schedule_info" name="custody_schedule_info"></textarea>
-        </div>
-        #}
-        <div>
-            <input type="submit" value="Add Child">
-        </div>
-    </form>
+    {% if session.get('role') == 'parent' %}
+        <hr>
+        <h3>Add New Child</h3>
+        <form method="POST" action="{{ url_for('add_child_web') }}"> {# Changed action to avoid conflict with API #}
+            <div>
+                <label for="name">Child's Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            <div>
+                <label for="date_of_birth">Date of Birth:</label>
+                <input type="date" id="date_of_birth" name="date_of_birth" required>
+            </div>
+            <div>
+                <label for="school_info">School Information (Optional):</label>
+                <input type="text" id="school_info" name="school_info">
+            </div>
+            {# Removing custody_schedule_info from this basic form as ResidencyPeriods are the preferred way #}
+            {# If a simple text field for old custody_schedule_info is still desired:
+            <div>
+                <label for="custody_schedule_info">Custody Notes (Optional):</label>
+                <textarea id="custody_schedule_info" name="custody_schedule_info"></textarea>
+            </div>
+            #}
+            <div>
+                <input type="submit" value="Add Child">
+            </div>
+        </form>
+    {% endif %}
 {% endblock %}
