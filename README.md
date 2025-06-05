@@ -2,6 +2,11 @@
 
 A simple planner application with a Flask API and command line interface for managing users, children, events and shifts.
 
+### New Feature: Grocery Lists
+
+The API now supports simple shared grocery items. Items can be created,
+viewed, updated and deleted via `/grocery-items` endpoints.
+
 ## Setup
 
 Install the required packages using pip:
