@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, calendar_sync # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -825,6 +825,13 @@ def api_get_child_residency_on_date(child_id):
         return jsonify(message="An unexpected error occurred."), 500
     finally:
         db.close()
+
+# --- Google Calendar Endpoints ---
+
+@app.route('/users/<int:user_id>/calendar/sync', methods=['POST'])
+def api_sync_calendar(user_id):
+    events = calendar_sync.sync_user_calendar(user_id)
+    return jsonify(message="Calendar synced", events=len(events)), 200
 
 
 if __name__ == '__main__':

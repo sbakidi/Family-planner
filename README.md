@@ -39,3 +39,17 @@ pytest
 ```
 
 This will execute the unit tests for the API and manager modules.
+
+## Google Calendar Sync
+
+To enable Google Calendar integration you need API credentials from the
+[Google Cloud Console](https://console.cloud.google.com/). Create an OAuth
+"Web application" or "Desktop" client and download the `credentials.json` file.
+
+Place the file in the project root (or update `CLIENT_SECRETS_FILE` in
+`src/calendar_sync.py`) and ensure the OAuth consent screen includes the
+callback URL `http://localhost:5000/oauth2callback` if using a web flow.
+
+Once credentials are configured you can authorize and sync a user's calendar
+from the CLI using the "Sync Google Calendar" option or by calling the API
+endpoint `/users/<user_id>/calendar/sync`.
