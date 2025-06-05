@@ -2,3 +2,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 family_planner.db
+mobile_app/node_modules/
+mobile_app/.expo/

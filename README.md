@@ -39,3 +39,25 @@ pytest
 ```
 
 This will execute the unit tests for the API and manager modules.
+
+## Mobile App
+
+The `mobile_app/` directory contains a minimal React Native project built with Expo.
+
+### Setup
+
+Install Node.js (v18+) and run the following commands inside `mobile_app`:
+
+```bash
+npm install
+```
+
+### Running
+
+Start the Expo development server:
+
+```bash
+npx expo start
+```
+
+Use the Expo app or an emulator to view the login and calendar screens. The app expects the Flask API to be running locally at `http://localhost:5000`.
