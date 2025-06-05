@@ -4,6 +4,7 @@ import os # For secret key
 
 from src import auth, user, shift, child, event # Models
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import badge
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -256,6 +257,7 @@ def api_update_event(event_id):
         end_time_str=data.get('end_time'),
         linked_user_id=data.get('user_id') if not unlink_user else None,
         linked_child_id=data.get('child_id') if not unlink_child else None,
+        completed=data.get('completed'),
         unlink_user=unlink_user,
         unlink_child=unlink_child
     )
@@ -616,6 +618,39 @@ def add_event_web():
         flash('Failed to add event. Please check your input or try again.', 'danger')
 
     return redirect(url_for('events_view'))
+
+
+@app.route('/events/<int:event_id>/complete-web', methods=['POST'])
+def complete_event_web(event_id):
+    if 'user_id' not in session:
+        flash('Please login.', 'warning')
+        return redirect(url_for('login'))
+
+    updated = event_manager.update_event(event_id=event_id, completed=True)
+    if updated:
+        flash('Event marked completed!', 'success')
+    else:
+        flash('Could not update event.', 'danger')
+    return redirect(url_for('events_view'))
+
+
+@app.route('/leaderboard', methods=['GET'])
+def leaderboard_view():
+    db = SessionLocal()
+    try:
+        standings = (
+            db.query(badge.Badge, user.User)
+            .join(user.User, badge.Badge.user_id == user.User.id)
+            .order_by(badge.Badge.points.desc())
+            .all()
+        )
+        results = [
+            {"name": u.name, "points": b.points, "badges": b.badges.split(',') if b.badges else []}
+            for b, u in standings
+        ]
+    finally:
+        db.close()
+    return render_template('leaderboard.html', leaders=results)
 
 
 # --- Child Web Routes ---

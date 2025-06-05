@@ -14,6 +14,7 @@
                     <small>
                         From: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if event.start_time else 'N/A' }} <br>
                         To: {{ event.end_time.strftime('%Y-%m-%d %H:%M') if event.end_time else 'N/A' }}
+                        {% if event.completed %}- Completed{% endif %}
                     </small>
                     <br>
                     <small>
@@ -29,6 +30,11 @@
                             Not linked to specific user or child.
                         {% endif %}
                     </small>
+                    {% if not event.completed %}
+                        <form method="POST" action="{{ url_for('complete_event_web', event_id=event.id) }}" style="display:inline;">
+                            <button type="submit">Mark Complete</button>
+                        </form>
+                    {% endif %}
                 </li>
                 <hr>
             {% endfor %}
