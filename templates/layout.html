@@ -30,6 +30,8 @@
         <nav>
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('albums_view') }}">Albums</a></li>
+                <li><a href="{{ url_for('photos_view') }}">Photos</a></li>
                 {% if session.get('user_id') %}
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
                     {# Add other authenticated links here, e.g., Profile, Dashboard #}

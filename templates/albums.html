@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+
+{% block title %}Albums{% endblock %}
+
+{% block content %}
+<h2>Albums</h2>
+<ul>
+    {% for album in albums %}
+        <li><strong>{{ album.name }}</strong> - {{ album.description or 'No description' }}</li>
+    {% endfor %}
+</ul>
+{% if not albums %}
+<p>No albums found.</p>
+{% endif %}
+{% endblock %}

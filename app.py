@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event, album, photo  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, photo_manager  # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -12,7 +12,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, album, photo  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -416,6 +416,57 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
     finally:
         db.close()
 
+# --- Album and Photo API Endpoints ---
+
+@app.route('/albums', methods=['POST'])
+def api_create_album():
+    data = request.get_json()
+    if not data or 'name' not in data:
+        return jsonify(message="Missing album name"), 400
+    album_obj = photo_manager.add_album(
+        name=data['name'],
+        description=data.get('description'),
+        user_id=data.get('user_id'),
+        is_public=data.get('is_public', False)
+    )
+    if album_obj:
+        return jsonify(album_obj.to_dict()), 201
+    return jsonify(message="Failed to create album"), 400
+
+
+@app.route('/albums', methods=['GET'])
+def api_get_albums():
+    user_id = request.args.get('user_id', type=int)
+    albums = photo_manager.get_albums(user_id=user_id)
+    return jsonify([a.to_dict() for a in albums]), 200
+
+
+@app.route('/photos', methods=['POST'])
+def api_upload_photo():
+    data = request.get_json()
+    if not data or 'filename' not in data:
+        return jsonify(message="Missing filename"), 400
+    photo_obj = photo_manager.add_photo(
+        filename=data['filename'],
+        title=data.get('title'),
+        description=data.get('description'),
+        tags=data.get('tags'),
+        user_id=data.get('user_id'),
+        album_id=data.get('album_id'),
+        is_public=data.get('is_public', False)
+    )
+    if photo_obj:
+        return jsonify(photo_obj.to_dict()), 201
+    return jsonify(message="Failed to add photo"), 400
+
+
+@app.route('/photos', methods=['GET'])
+def api_get_photos():
+    album_id = request.args.get('album_id', type=int)
+    search = request.args.get('search')
+    photos = photo_manager.search_photos(album_id=album_id, search=search)
+    return jsonify([p.to_dict() for p in photos]), 200
+
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
 #  but outside of the API endpoint definitions. Let's add Web Routes section after logout.)
@@ -534,6 +585,21 @@ def add_shift():
         flash('Failed to add shift. Please check your input or try again.', 'danger')
 
     return redirect(url_for('shifts_view'))
+
+
+# --- Album and Photo Web Routes ---
+
+@app.route('/albums', methods=['GET'])
+def albums_view():
+    albums = photo_manager.get_albums()
+    return render_template('albums.html', albums=albums)
+
+
+@app.route('/photos', methods=['GET'])
+def photos_view():
+    search = request.args.get('search')
+    photos = photo_manager.search_photos(search=search)
+    return render_template('photos.html', photos=photos)
 
 
 # --- API Endpoints (JSON) ---
