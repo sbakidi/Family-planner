@@ -1,19 +1,25 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Blueprint, g
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response, send_from_directory, Blueprint, g
 from sqlalchemy.exc import SQLAlchemyError
-import os # For secret key
+import os  # For secret key
+from werkzeug.utils import secure_filename
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event, grocery, task, booking, document  # Models
+from datetime import datetime
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
+from src.notification import get_user_queue
+
+
 from src.database import init_db, SessionLocal
 from src.token_manager import token_required, generate_token_for_user
 # Import residency_period model for init_db
+from src import analytics
 from src import residency_period
 
 # Initialize the database (create tables if they don't exist)
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, shift_swap, expense, task, booking, document  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -24,6 +30,9 @@ except Exception as e:
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Generate a random secret key for sessions
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # API blueprint
 api_bp = Blueprint('api_v1', __name__)
@@ -57,13 +66,14 @@ def register_user():
         name = data.get('name')
         email = data.get('email')
         password = data.get('password')
+        role = data.get('role', 'parent')
 
         # The auth.register function now uses SQLAlchemy and handles DB interaction
-        new_user = auth.register(name=name, email=email, password=password)
+        new_user = auth.register(name=name, email=email, password=password, role=role)
 
         if new_user:
             # new_user is an SQLAlchemy User model instance
-            return jsonify(message="User registered successfully", user_id=new_user.id, name=new_user.name), 201
+            return jsonify(message="User registered successfully", user_id=new_user.id, name=new_user.name, role=new_user.role), 201
         else:
             # auth.register prints "Error: Email already exists." or DB error.
             # We can return a more generic message or rely on the print for now.
@@ -96,8 +106,11 @@ def login_user():
         logged_in_user = auth.login(email=email, password=password)
 
         if logged_in_user:
+
             token = generate_token_for_user(logged_in_user.id)
-            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email, token=token), 200
+            # logged_in_user is an SQLAlchemy User model instance
+            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email, token=token, role=logged_in_user.role), 200
+
         else:
             # auth.login prints "Error: Email not found." or "Error: Incorrect password."
             return jsonify(message="Login failed: Invalid email or password."), 401 # Unauthorized
@@ -227,6 +240,15 @@ def api_create_event():
     if not data or not all(k in data for k in ("title", "start_time", "end_time")):
         return jsonify(message="Missing title, start_time, or end_time for event"), 400
 
+    conflict_info = event_manager.detect_conflicts(
+        start_time_str=data['start_time'],
+        end_time_str=data['end_time'],
+        user_id=data.get('user_id'),
+        child_id=data.get('child_id')
+    )
+    if conflict_info.get('conflicts'):
+        return jsonify({"message": "conflict", **conflict_info}), 409
+
     new_event_obj = event_manager.create_event(
         title=data['title'],
         description=data.get('description'),
@@ -297,10 +319,152 @@ def api_delete_event(event_id):
     return jsonify(message="Event not found or delete failed"), 404
 
 
+@app.route('/import-school-calendar', methods=['POST'])
+def api_import_school_calendar():
+    if 'file' not in request.files:
+        return jsonify(message='No file provided'), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify(message='No file provided'), 400
+
+    temp_path = os.path.join('/tmp', file.filename)
+    file.save(temp_path)
+    imported = school_import.import_school_calendar(temp_path)
+    os.remove(temp_path)
+
+    return jsonify(imported=len(imported)), 200
+
+# --- Task API Endpoints ---
+
+@app.route('/tasks', methods=['POST'])
+def api_create_task():
+    data = request.get_json()
+    if not data or 'description' not in data:
+        return jsonify(message="Missing description for task"), 400
+
+    new_task_obj = task_manager.create_task(
+        description=data['description'],
+        due_date_str=data.get('due_date'),
+        user_id=data.get('user_id'),
+        event_id=data.get('event_id'),
+    )
+    if new_task_obj:
+        return jsonify(new_task_obj.to_dict()), 201
+    return jsonify(message="Failed to create task"), 400
+
+
+@app.route('/tasks/<int:task_id>', methods=['GET'])
+def api_get_task_details(task_id):
+    task_obj = task_manager.get_task_details(task_id)
+    if task_obj:
+        return jsonify(task_obj.to_dict()), 200
+    return jsonify(message="Task not found"), 404
+
+
+@app.route('/users/<int:user_id>/tasks', methods=['GET'])
+def api_get_user_tasks(user_id):
+    tasks_list = task_manager.get_tasks_for_user(user_id)
+    return jsonify([t.to_dict(include_user=False) for t in tasks_list]), 200
+
+
+@app.route('/events/<int:event_id>/tasks', methods=['GET'])
+def api_get_event_tasks(event_id):
+    tasks_list = task_manager.get_tasks_for_event(event_id)
+    return jsonify([t.to_dict(include_event=False) for t in tasks_list]), 200
+
+
+@app.route('/tasks/<int:task_id>', methods=['PUT'])
+def api_update_task(task_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No data provided for update"), 400
+
+    unlink_user = 'user_id' in data and data['user_id'] is None
+    unlink_event = 'event_id' in data and data['event_id'] is None
+
+    updated_task = task_manager.update_task(
+        task_id=task_id,
+        description=data.get('description'),
+        due_date_str=data.get('due_date'),
+        user_id=data.get('user_id') if not unlink_user else None,
+        event_id=data.get('event_id') if not unlink_event else None,
+        completed=data.get('completed'),
+        unlink_user=unlink_user,
+        unlink_event=unlink_event,
+    )
+    if updated_task:
+        return jsonify(updated_task.to_dict()), 200
+    return jsonify(message="Task not found or update failed"), 404
+
+
+@app.route('/tasks/<int:task_id>', methods=['DELETE'])
+def api_delete_task(task_id):
+    if task_manager.delete_task(task_id):
+        return jsonify(message="Task deleted successfully"), 200
+    return jsonify(message="Task not found or delete failed"), 404
+
+
+
+
 # --- Shift Pattern API Endpoints ---
+
 
 @api_bp.route('/shift-patterns', methods=['POST'])
 @token_required
+
+@app.route('/bookings', methods=['POST'])
+def api_create_booking():
+    data = request.get_json()
+    if not data or not all(k in data for k in ('service', 'start_time', 'end_time', 'user_id')):
+        return jsonify(message="Missing required booking fields"), 400
+
+    booking_obj = booking_manager.create_booking(
+        service=data['service'],
+        start_time_str=data['start_time'],
+        end_time_str=data['end_time'],
+        user_id=data['user_id']
+    )
+    if booking_obj:
+        return jsonify(booking_obj.to_dict()), 201
+    return jsonify(message="Failed to create booking"), 400
+
+@app.route('/bookings/<int:booking_id>', methods=['GET'])
+def api_get_booking_details(booking_id):
+    booking = booking_manager.get_booking_details(booking_id)
+    if booking:
+        return jsonify(booking.to_dict()), 200
+    return jsonify(message="Booking not found"), 404
+
+@app.route('/users/<int:user_id>/bookings', methods=['GET'])
+def api_get_user_bookings(user_id):
+    bookings = booking_manager.get_bookings_for_user(user_id)
+    return jsonify([b.to_dict(include_user=False) for b in bookings]), 200
+
+@app.route('/bookings/<int:booking_id>', methods=['PUT'])
+def api_update_booking(booking_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No data provided for update"), 400
+
+    updated = booking_manager.update_booking(
+        booking_id=booking_id,
+        service=data.get('service'),
+        start_time_str=data.get('start_time'),
+        end_time_str=data.get('end_time')
+    )
+    if updated:
+        return jsonify(updated.to_dict()), 200
+    return jsonify(message="Booking not found or update failed"), 404
+
+@app.route('/bookings/<int:booking_id>', methods=['DELETE'])
+def api_delete_booking(booking_id):
+    if booking_manager.delete_booking(booking_id):
+        return jsonify(message="Booking deleted successfully"), 200
+    return jsonify(message="Booking not found or delete failed"), 404
+
+
+@app.route('/shift-patterns', methods=['POST'])
+
 def api_create_global_shift_pattern():
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
@@ -424,6 +588,8 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
 
     start_date_str = data['start_date']
     end_date_str = data['end_date']
+    holidays = data.get('holidays')
+    exceptions = data.get('exceptions')
 
     db = SessionLocal()
     try:
@@ -432,7 +598,9 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
             pattern_id=pattern_id,
             user_id=user_id,
             start_date_str=start_date_str,
-            end_date_str=end_date_str
+            end_date_str=end_date_str,
+            holidays=holidays,
+            exceptions=exceptions
         )
         db.commit() # Commit here after successful generation
         return jsonify([s.to_dict(include_source_pattern_details=True) for s in created_shifts]), 201
@@ -451,6 +619,75 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
     finally:
         db.close()
 
+@app.route('/shift-swaps', methods=['POST', 'PUT'])
+def api_shift_swaps():
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data or not all(k in data for k in ('from_shift_id', 'to_shift_id')):
+            return jsonify(message="Missing from_shift_id or to_shift_id"), 400
+
+        swap = shift_swap_manager.propose_swap(data['from_shift_id'], data['to_shift_id'])
+        if swap:
+            return jsonify(swap.to_dict()), 201
+        return jsonify(message="Failed to create swap request"), 400
+
+    data = request.get_json()
+    if not data or 'request_id' not in data:
+        return jsonify(message="Missing request_id"), 400
+
+    if data.get('approve', True):
+        result = shift_swap_manager.approve_swap(data['request_id'])
+    else:
+        result = shift_swap_manager.reject_swap(data['request_id'])
+
+    if result:
+        return jsonify(result.to_dict()), 200
+    return jsonify(message="Swap request not found or already processed"), 404
+
+
+# --- Grocery Item Endpoints ---
+@app.route('/grocery-items', methods=['POST'])
+def api_add_grocery_item():
+    data = request.get_json() or {}
+    name = data.get('name')
+    if not name:
+        return jsonify(message="Missing item name"), 400
+    quantity = data.get('quantity')
+    user_id = data.get('user_id')
+    item = grocery_manager.add_item(name=name, quantity=quantity, user_id=user_id)
+    if item:
+        return jsonify(item.to_dict()), 201
+    return jsonify(message="Failed to create item"), 400
+
+
+@app.route('/grocery-items', methods=['GET'])
+def api_get_grocery_items():
+    user_id = request.args.get('user_id', type=int)
+    items = grocery_manager.get_items(user_id=user_id)
+    return jsonify([i.to_dict() for i in items]), 200
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['PUT'])
+def api_update_grocery_item(item_id):
+    data = request.get_json() or {}
+    item = grocery_manager.update_item(
+        item_id,
+        name=data.get('name'),
+        quantity=data.get('quantity'),
+        is_completed=data.get('is_completed')
+    )
+    if item:
+        return jsonify(item.to_dict()), 200
+    return jsonify(message="Item not found"), 404
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['DELETE'])
+def api_delete_grocery_item(item_id):
+    if grocery_manager.delete_item(item_id):
+        return jsonify(message="Item deleted"), 200
+    return jsonify(message="Item not found"), 404
+
+
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
 #  but outside of the API endpoint definitions. Let's add Web Routes section after logout.)
@@ -467,16 +704,18 @@ def register():
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
+        role = request.form.get('role', 'parent')
 
         if not name or not email or not password:
             flash('All fields are required.', 'danger')
             return render_template('register.html'), 400
 
-        new_user = auth.register(name=name, email=email, password=password)
+        new_user = auth.register(name=name, email=email, password=password, role=role)
 
         if new_user:
             session['user_id'] = new_user.id
             session['user_name'] = new_user.name
+            session['role'] = new_user.role
             flash(f'Welcome, {new_user.name}! You have been successfully registered and logged in.', 'success')
             return redirect(url_for('index'))
         else:
@@ -506,6 +745,7 @@ def login():
         if logged_in_user:
             session['user_id'] = logged_in_user.id
             session['user_name'] = logged_in_user.name
+            session['role'] = logged_in_user.role
             flash(f'Welcome back, {logged_in_user.name}!', 'success')
             return redirect(url_for('index'))
         else:
@@ -518,8 +758,24 @@ def login():
 def logout():
     session.pop('user_id', None)
     session.pop('user_name', None)
+    session.pop('role', None)
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
+
+@app.route('/notifications/stream')
+def notifications_stream():
+    if 'user_id' not in session:
+        return "Unauthorized", 401
+
+    user_id = session['user_id']
+    q = get_user_queue(user_id)
+
+    def event_stream():
+        while True:
+            data = q.get()
+            yield f"data: {data}\n\n"
+
+    return Response(event_stream(), mimetype='text/event-stream')
 
 # --- Shift Web Routes ---
 
@@ -633,24 +889,194 @@ def add_event_web():
         return redirect(url_for('events_view'))
 
 
-    # Events created via web are always linked to the current user.
-    # event_manager.create_event handles its own DB session.
+    conflict_info = event_manager.detect_conflicts(
+        start_time_str=start_time_formatted,
+        end_time_str=end_time_formatted,
+        user_id=user_id,
+        child_id=linked_child_id
+    )
+    if conflict_info.get('conflicts'):
+        flash('Conflict detected with existing schedule.', 'danger')
+        if conflict_info.get('suggested_start'):
+            flash(f"Suggested: {conflict_info['suggested_start']} - {conflict_info['suggested_end']}", 'info')
+        return redirect(url_for('events_view'))
+
     new_event = event_manager.create_event(
         title=title,
         description=description,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
-        linked_user_id=user_id, # Auto-link to current user
-        linked_child_id=linked_child_id if linked_child_id else None # Ensure None if 0 or empty
+        linked_user_id=user_id,
+        linked_child_id=linked_child_id if linked_child_id else None
     )
 
     if new_event:
         flash('Event added successfully!', 'success')
     else:
-        # event_manager.create_event prints detailed errors
         flash('Failed to add event. Please check your input or try again.', 'danger')
 
     return redirect(url_for('events_view'))
+
+
+
+
+# --- Booking Web Routes ---
+@app.route('/bookings', methods=['GET'])
+def bookings_view():
+    if 'user_id' not in session:
+        flash('Please login to view your bookings.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user_bookings = booking_manager.get_bookings_for_user(user_id=user_id)
+    return render_template('bookings.html', bookings=user_bookings)
+
+@app.route('/bookings/add-web', methods=['POST'])
+def add_booking_web():
+    if 'user_id' not in session:
+        flash('Please login to add a booking.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    service = request.form.get('service')
+    start_time_str_html = request.form.get('start_time')
+    end_time_str_html = request.form.get('end_time')
+
+    if not service or not start_time_str_html or not end_time_str_html:
+        flash('All fields are required for a booking.', 'danger')
+        return redirect(url_for('bookings_view'))
+
+    try:
+        start_formatted = datetime.fromisoformat(start_time_str_html).strftime('%Y-%m-%d %H:%M')
+        end_formatted = datetime.fromisoformat(end_time_str_html).strftime('%Y-%m-%d %H:%M')
+    except ValueError:
+        flash('Invalid datetime format submitted for booking.', 'danger')
+        return redirect(url_for('bookings_view'))
+
+    new_booking = booking_manager.create_booking(
+        service=service,
+        start_time_str=start_formatted,
+        end_time_str=end_formatted,
+        user_id=user_id
+    )
+    if new_booking:
+        flash('Booking added successfully!', 'success')
+    else:
+        flash('Failed to add booking. Please try again.', 'danger')
+
+    return redirect(url_for('bookings_view'))
+
+# --- Task Web Routes ---
+
+@app.route('/tasks', methods=['GET'])
+def tasks_view():
+    if 'user_id' not in session:
+        flash('Please login to view your tasks.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user_tasks = task_manager.get_tasks_for_user(user_id=user_id)
+    user_events = event_manager.get_events_for_user(user_id=user_id)
+    return render_template('tasks.html', tasks=user_tasks, events=user_events)
+
+
+@app.route('/tasks/add-web', methods=['POST'])
+def add_task_web():
+    if 'user_id' not in session:
+        flash('Please login to add a task.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    description = request.form.get('description')
+    due_date_str_html = request.form.get('due_date')
+    event_id_str = request.form.get('event_id')
+
+    if not description:
+        flash('Task description is required.', 'danger')
+        return redirect(url_for('tasks_view'))
+
+    due_date_formatted = None
+    if due_date_str_html:
+        try:
+            due_date_formatted = datetime.fromisoformat(due_date_str_html).strftime('%Y-%m-%d %H:%M')
+        except ValueError:
+            flash('Invalid datetime format submitted for task.', 'danger')
+            return redirect(url_for('tasks_view'))
+
+    linked_event_id = None
+    if event_id_str and event_id_str.isdigit():
+        linked_event_id = int(event_id_str)
+        user_event_ids = [e.id for e in event_manager.get_events_for_user(user_id=user_id)]
+        if linked_event_id not in user_event_ids:
+            flash('Invalid event selected for the task.', 'danger')
+            return redirect(url_for('tasks_view'))
+    elif event_id_str:
+        flash('Invalid event ID format.', 'danger')
+        return redirect(url_for('tasks_view'))
+
+    new_task = task_manager.create_task(
+        description=description,
+        due_date_str=due_date_formatted,
+        user_id=user_id,
+        event_id=linked_event_id
+    )
+
+    if new_task:
+        flash('Task added successfully!', 'success')
+    else:
+        flash('Failed to add task. Please try again.', 'danger')
+
+    return redirect(url_for('tasks_view'))
+
+# --- Expense Web Routes ---
+
+@app.route('/expenses', methods=['GET'])
+def expenses_view():
+    if 'user_id' not in session:
+        flash('Please login to view expenses.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    expenses_list = expense_manager.get_all_expenses()
+    children = child_manager.get_user_children(user_id=user_id)
+    return render_template('expenses.html', expenses=expenses_list, children=children)
+
+
+@app.route('/expenses', methods=['POST'])
+def add_expense():
+    if 'user_id' not in session:
+        flash('Please login to add an expense.', 'warning')
+        return redirect(url_for('login'))
+
+    description = request.form.get('description')
+    amount_str = request.form.get('amount')
+    child_id_str = request.form.get('child_id')
+
+    if not description or not amount_str:
+        flash('Description and amount are required.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        flash('Invalid amount.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    child_id = int(child_id_str) if child_id_str and child_id_str.isdigit() else None
+
+    new_exp = expense_manager.add_expense(
+        description=description,
+        amount=amount,
+        paid_by_id=session['user_id'],
+        child_id=child_id
+    )
+    if new_exp:
+        flash('Expense added successfully!', 'success')
+    else:
+        flash('Failed to add expense.', 'danger')
+    return redirect(url_for('expenses_view'))
+
+
 
 
 # --- Child Web Routes ---
@@ -701,6 +1127,65 @@ def add_child_web():
 
     return redirect(url_for('children_view'))
 
+@app.route("/analytics")
+def analytics_view():
+    if "user_id" not in session:
+        flash("Please login to view analytics.", "warning")
+        return redirect(url_for("login"))
+    user_id = session["user_id"]
+    data = analytics.get_monthly_analytics(user_id)
+    return render_template("analytics.html", data=data)
+
+
+
+# --- Document Web Routes ---
+
+@app.route('/documents', methods=['GET', 'POST'])
+def documents_view():
+    if 'user_id' not in session:
+        flash('Please login to manage documents.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+
+    if request.method == 'POST':
+        uploaded = request.files.get('file')
+        child_id_str = request.form.get('child_id')
+        child_id = int(child_id_str) if child_id_str and child_id_str.isdigit() else None
+
+        if not uploaded or uploaded.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(url_for('documents_view'))
+
+        filename = secure_filename(uploaded.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        uploaded.save(file_path)
+
+        db = SessionLocal()
+        try:
+            doc_record = document.Document(filename=filename, user_id=user_id, child_id=child_id)
+            db.add(doc_record)
+            db.commit()
+            flash('File uploaded successfully.', 'success')
+        except Exception as e:
+            db.rollback()
+            flash('Failed to save document.', 'danger')
+            print(f'Error saving document: {e}')
+        finally:
+            db.close()
+        return redirect(url_for('documents_view'))
+
+    db = SessionLocal()
+    docs = db.query(document.Document).filter(document.Document.user_id == user_id).all()
+    db.close()
+    user_children = child_manager.get_user_children(user_id=user_id)
+    return render_template('documents.html', documents=docs, children=user_children)
+
+
+@app.route('/uploads/<path:filename>')
+def download_document(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
 
 # The previous residency period POST route:
 @api_bp.route('/children/<int:child_id>/residency-periods', methods=['POST'])
@@ -712,6 +1197,8 @@ def api_add_residency_period(child_id):
 
     db = SessionLocal()
     try:
+        if not auth.user_has_role(data['parent_id'], 'parent'):
+            return jsonify(message="Only parents may create residency periods."), 403
         # The child_manager functions now expect db_session as the first argument
         new_period = child_manager.add_residency_period(
             db_session=db,
@@ -785,6 +1272,12 @@ def api_update_residency_period(period_id):
 
     db = SessionLocal()
     try:
+        if data.get('parent_id') and not auth.user_has_role(data.get('parent_id'), 'parent'):
+            return jsonify(message="Only parents may update residency periods."), 403
+        if not data.get('parent_id'):
+            existing = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+            if existing and not auth.user_has_role(existing.parent_id, 'parent'):
+                return jsonify(message="Only parents may update residency periods."), 403
         updated_period = child_manager.update_residency_period(
             db_session=db,
             period_id=period_id,
@@ -815,6 +1308,11 @@ def api_update_residency_period(period_id):
 def api_delete_residency_period(period_id):
     db = SessionLocal()
     try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+        if not auth.user_has_role(period.parent_id, 'parent'):
+            return jsonify(message="Only parents may delete residency periods."), 403
         success = child_manager.delete_residency_period(db_session=db, period_id=period_id)
         if success:
             db.commit()
@@ -831,8 +1329,93 @@ def api_delete_residency_period(period_id):
     finally:
         db.close()
 
+
 @api_bp.route('/children/<int:child_id>/residency', methods=['GET'])
 @token_required
+
+# ----- Residency change request endpoints -----
+
+@app.route('/residency-periods/<int:period_id>/propose-change', methods=['POST'])
+def api_propose_residency_change(period_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No change data provided"), 400
+
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        period.proposed_start_datetime = child_manager._parse_datetime_for_residency(data.get('start_datetime')) if data.get('start_datetime') else None
+        period.proposed_end_datetime = child_manager._parse_datetime_for_residency(data.get('end_datetime')) if data.get('end_datetime') else None
+        period.change_notes = data.get('notes')
+        period.approval_status = 'pending'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error proposing change: {e}")
+        return jsonify(message="Error proposing change"), 500
+    finally:
+        db.close()
+
+
+@app.route('/residency-periods/<int:period_id>/accept-change', methods=['POST'])
+def api_accept_residency_change(period_id):
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        if period.proposed_start_datetime:
+            period.start_datetime = period.proposed_start_datetime
+        if period.proposed_end_datetime:
+            period.end_datetime = period.proposed_end_datetime
+        if period.change_notes:
+            period.notes = period.change_notes
+
+        period.proposed_start_datetime = None
+        period.proposed_end_datetime = None
+        period.change_notes = None
+        period.approval_status = 'approved'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error accepting change: {e}")
+        return jsonify(message="Error accepting change"), 500
+    finally:
+        db.close()
+
+
+@app.route('/residency-periods/<int:period_id>/decline-change', methods=['POST'])
+def api_decline_residency_change(period_id):
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        period.proposed_start_datetime = None
+        period.proposed_end_datetime = None
+        period.change_notes = None
+        period.approval_status = 'declined'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error declining change: {e}")
+        return jsonify(message="Error declining change"), 500
+    finally:
+        db.close()
+
+@app.route('/children/<int:child_id>/residency', methods=['GET'])
+
 def api_get_child_residency_on_date(child_id):
     date_param = request.args.get('date')
     if not date_param:
@@ -866,8 +1449,19 @@ def api_get_child_residency_on_date(child_id):
         return jsonify(message="An unexpected error occurred."), 500
     finally:
         db.close()
+
 # Register API blueprint
 app.register_blueprint(api_bp, url_prefix="/api/v1")
+
+
+# --- Google Calendar Endpoints ---
+
+@app.route('/users/<int:user_id>/calendar/sync', methods=['POST'])
+def api_sync_calendar(user_id):
+    events = calendar_sync.sync_user_calendar(user_id)
+    return jsonify(message="Calendar synced", events=len(events)), 200
+
+
 
 if __name__ == '__main__':
     # Note: For development, app.run(debug=True) is fine.
