@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import hashlib # For direct user creation if needed, though auth API is preferred
+import sys
 from datetime import datetime, timedelta
 
 # Adjust path
