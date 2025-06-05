@@ -77,9 +77,10 @@ def login_user():
 
         email = data.get('email')
         password = data.get('password')
+        otp = data.get('otp')
 
         # auth.login now uses SQLAlchemy
-        logged_in_user = auth.login(email=email, password=password)
+        logged_in_user = auth.login(email=email, password=password, otp=otp)
 
         if logged_in_user:
             # logged_in_user is an SQLAlchemy User model instance
@@ -101,6 +102,28 @@ def logout_user():
     # auth.logout() itself just prints a message.
     auth.logout()
     return jsonify(message="Logout successful"), 200
+
+
+@app.route('/auth/otp/generate', methods=['POST'])
+def generate_otp_route():
+    data = request.get_json()
+    if not data or 'user_id' not in data:
+        return jsonify(message="Missing user_id"), 400
+    otp = auth.generate_otp(data['user_id'])
+    if otp is None:
+        return jsonify(message="OTP generation failed"), 400
+    return jsonify(otp=otp), 200
+
+
+@app.route('/auth/otp/verify', methods=['POST'])
+def verify_otp_route():
+    data = request.get_json()
+    if not data or not all(k in data for k in ('user_id', 'otp')):
+        return jsonify(message="Missing user_id or otp"), 400
+    if auth.verify_otp(data['user_id'], data['otp']):
+        return jsonify(message="OTP verified"), 200
+    else:
+        return jsonify(message="Invalid OTP"), 400
 
 
 # --- Child API Endpoints ---

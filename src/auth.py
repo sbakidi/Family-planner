@@ -1,10 +1,11 @@
 import hashlib
+import pyotp
 # import uuid # No longer needed for generating user IDs by auth module
 from sqlalchemy.orm import Session # Not directly used, but good to know SessionLocal returns this type
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database import SessionLocal
-from src.user import User # SQLAlchemy User model
+from src.user import User  # SQLAlchemy User model
 
 # users_db is removed, data will be stored in SQLite via SQLAlchemy
 
@@ -40,7 +41,36 @@ def register(name, email, password):
     finally:
         db.close()
 
-def login(email, password):
+def generate_otp(user_id):
+    """Generate a one time password for a user with two factor enabled."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+        if not user.two_factor_secret:
+            user.two_factor_secret = pyotp.random_base32()
+            db.commit()
+        totp = pyotp.TOTP(user.two_factor_secret)
+        return totp.now()
+    finally:
+        db.close()
+
+
+def verify_otp(user_id, otp):
+    """Verify a provided OTP for a user."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.two_factor_secret:
+            return False
+        totp = pyotp.TOTP(user.two_factor_secret)
+        return totp.verify(otp)
+    finally:
+        db.close()
+
+
+def login(email, password, otp=None):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == email).first()
@@ -51,6 +81,13 @@ def login(email, password):
         # Verify password
         password_hash_to_check = hashlib.sha256(password.encode()).hexdigest()
         if user.hashed_password == password_hash_to_check:
+            if user.two_factor_secret:
+                if otp is None:
+                    print("Error: OTP required.")
+                    return None
+                if not verify_otp(user.id, otp):
+                    print("Error: Invalid OTP.")
+                    return None
             # Return the User object (SQLAlchemy model instance)
             # Ensure attributes used in main.py (e.g., user.name, user.id) are present
             return user

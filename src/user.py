@@ -15,6 +15,7 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String) # Storing hashed password
+    two_factor_secret = Column(String, nullable=True)
 
     # Relationship to Shifts (One-to-Many: User has many Shifts)
     shifts = relationship("Shift", back_populates="owner")
