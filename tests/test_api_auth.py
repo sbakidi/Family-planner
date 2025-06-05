@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import hashlib
+import sys
 
 # Adjust the path to include the root directory of the project
 # This is crucial for the test runner to find the 'app' module and 'src'
