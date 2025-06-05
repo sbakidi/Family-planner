@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event, grocery  # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager  # Managers
+from src import auth, user, shift, child, event, grocery, task  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager  # Managers
 from src.notification import get_user_queue
 
 from src.database import init_db, SessionLocal
@@ -14,7 +14,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event, shift_swap, expense  # Models
+    from src import user, shift, child, event, shift_swap, expense, task  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -270,6 +270,77 @@ def api_delete_event(event_id):
     if event_manager.delete_event(event_id):
         return jsonify(message="Event deleted successfully"), 200 # Or 204
     return jsonify(message="Event not found or delete failed"), 404
+
+
+# --- Task API Endpoints ---
+
+@app.route('/tasks', methods=['POST'])
+def api_create_task():
+    data = request.get_json()
+    if not data or 'description' not in data:
+        return jsonify(message="Missing description for task"), 400
+
+    new_task_obj = task_manager.create_task(
+        description=data['description'],
+        due_date_str=data.get('due_date'),
+        user_id=data.get('user_id'),
+        event_id=data.get('event_id'),
+    )
+    if new_task_obj:
+        return jsonify(new_task_obj.to_dict()), 201
+    return jsonify(message="Failed to create task"), 400
+
+
+@app.route('/tasks/<int:task_id>', methods=['GET'])
+def api_get_task_details(task_id):
+    task_obj = task_manager.get_task_details(task_id)
+    if task_obj:
+        return jsonify(task_obj.to_dict()), 200
+    return jsonify(message="Task not found"), 404
+
+
+@app.route('/users/<int:user_id>/tasks', methods=['GET'])
+def api_get_user_tasks(user_id):
+    tasks_list = task_manager.get_tasks_for_user(user_id)
+    return jsonify([t.to_dict(include_user=False) for t in tasks_list]), 200
+
+
+@app.route('/events/<int:event_id>/tasks', methods=['GET'])
+def api_get_event_tasks(event_id):
+    tasks_list = task_manager.get_tasks_for_event(event_id)
+    return jsonify([t.to_dict(include_event=False) for t in tasks_list]), 200
+
+
+@app.route('/tasks/<int:task_id>', methods=['PUT'])
+def api_update_task(task_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No data provided for update"), 400
+
+    unlink_user = 'user_id' in data and data['user_id'] is None
+    unlink_event = 'event_id' in data and data['event_id'] is None
+
+    updated_task = task_manager.update_task(
+        task_id=task_id,
+        description=data.get('description'),
+        due_date_str=data.get('due_date'),
+        user_id=data.get('user_id') if not unlink_user else None,
+        event_id=data.get('event_id') if not unlink_event else None,
+        completed=data.get('completed'),
+        unlink_user=unlink_user,
+        unlink_event=unlink_event,
+    )
+    if updated_task:
+        return jsonify(updated_task.to_dict()), 200
+    return jsonify(message="Task not found or update failed"), 404
+
+
+@app.route('/tasks/<int:task_id>', methods=['DELETE'])
+def api_delete_task(task_id):
+    if task_manager.delete_task(task_id):
+        return jsonify(message="Task deleted successfully"), 200
+    return jsonify(message="Task not found or delete failed"), 404
+
 
 
 # --- Shift Pattern API Endpoints ---
@@ -708,6 +779,69 @@ def add_event_web():
     return redirect(url_for('events_view'))
 
 
+
+# --- Task Web Routes ---
+
+@app.route('/tasks', methods=['GET'])
+def tasks_view():
+    if 'user_id' not in session:
+        flash('Please login to view your tasks.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user_tasks = task_manager.get_tasks_for_user(user_id=user_id)
+    user_events = event_manager.get_events_for_user(user_id=user_id)
+    return render_template('tasks.html', tasks=user_tasks, events=user_events)
+
+
+@app.route('/tasks/add-web', methods=['POST'])
+def add_task_web():
+    if 'user_id' not in session:
+        flash('Please login to add a task.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    description = request.form.get('description')
+    due_date_str_html = request.form.get('due_date')
+    event_id_str = request.form.get('event_id')
+
+    if not description:
+        flash('Task description is required.', 'danger')
+        return redirect(url_for('tasks_view'))
+
+    due_date_formatted = None
+    if due_date_str_html:
+        try:
+            due_date_formatted = datetime.fromisoformat(due_date_str_html).strftime('%Y-%m-%d %H:%M')
+        except ValueError:
+            flash('Invalid datetime format submitted for task.', 'danger')
+            return redirect(url_for('tasks_view'))
+
+    linked_event_id = None
+    if event_id_str and event_id_str.isdigit():
+        linked_event_id = int(event_id_str)
+        user_event_ids = [e.id for e in event_manager.get_events_for_user(user_id=user_id)]
+        if linked_event_id not in user_event_ids:
+            flash('Invalid event selected for the task.', 'danger')
+            return redirect(url_for('tasks_view'))
+    elif event_id_str:
+        flash('Invalid event ID format.', 'danger')
+        return redirect(url_for('tasks_view'))
+
+    new_task = task_manager.create_task(
+        description=description,
+        due_date_str=due_date_formatted,
+        user_id=user_id,
+        event_id=linked_event_id
+    )
+
+    if new_task:
+        flash('Task added successfully!', 'success')
+    else:
+        flash('Failed to add task. Please try again.', 'danger')
+
+    return redirect(url_for('tasks_view'))
+
 # --- Expense Web Routes ---
 
 @app.route('/expenses', methods=['GET'])
@@ -755,6 +889,7 @@ def add_expense():
     else:
         flash('Failed to add expense.', 'danger')
     return redirect(url_for('expenses_view'))
+
 
 
 # --- Child Web Routes ---
