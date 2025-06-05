@@ -1,6 +1,8 @@
 Flask
 SQLAlchemy
 pytest
+flask-ask
+google-assistant-sdk
 pyotp
 flask-restx
 google-api-python-client
