@@ -56,6 +56,10 @@ def handle_add_shift():
         print("Error: You must be logged in to add a shift.")
         return
 
+    if getattr(current_user, 'role', 'parent') != 'parent':
+        print("Permission denied: Only parents can add shifts.")
+        return
+
     print("\n--- Add New Shift ---")
     # Assuming current_user is a User object with a user_id attribute
     user_id = current_user.user_id
@@ -86,6 +90,10 @@ def handle_view_my_shifts():
 def handle_add_child():
     if not current_user:
         print("Error: You must be logged in to add a child.")
+        return
+
+    if getattr(current_user, 'role', 'parent') != 'parent':
+        print("Permission denied: Only parents can add children.")
         return
 
     print("\n--- Add New Child ---")
@@ -119,6 +127,10 @@ def handle_view_my_children():
 def handle_create_event():
     if not current_user:
         print("Error: You must be logged in to create an event.")
+        return
+
+    if getattr(current_user, 'role', 'parent') != 'parent':
+        print("Permission denied: Only parents can create events.")
         return
 
     print("\n--- Create New Event ---")

@@ -43,13 +43,14 @@ def register_user():
         name = data.get('name')
         email = data.get('email')
         password = data.get('password')
+        role = data.get('role', 'parent')
 
         # The auth.register function now uses SQLAlchemy and handles DB interaction
-        new_user = auth.register(name=name, email=email, password=password)
+        new_user = auth.register(name=name, email=email, password=password, role=role)
 
         if new_user:
             # new_user is an SQLAlchemy User model instance
-            return jsonify(message="User registered successfully", user_id=new_user.id, name=new_user.name), 201
+            return jsonify(message="User registered successfully", user_id=new_user.id, name=new_user.name, role=new_user.role), 201
         else:
             # auth.register prints "Error: Email already exists." or DB error.
             # We can return a more generic message or rely on the print for now.
@@ -83,7 +84,7 @@ def login_user():
 
         if logged_in_user:
             # logged_in_user is an SQLAlchemy User model instance
-            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email), 200
+            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email, role=logged_in_user.role), 200
         else:
             # auth.login prints "Error: Email not found." or "Error: Incorrect password."
             return jsonify(message="Login failed: Invalid email or password."), 401 # Unauthorized
@@ -432,16 +433,18 @@ def register():
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
+        role = request.form.get('role', 'parent')
 
         if not name or not email or not password:
             flash('All fields are required.', 'danger')
             return render_template('register.html'), 400
 
-        new_user = auth.register(name=name, email=email, password=password)
+        new_user = auth.register(name=name, email=email, password=password, role=role)
 
         if new_user:
             session['user_id'] = new_user.id
             session['user_name'] = new_user.name
+            session['role'] = new_user.role
             flash(f'Welcome, {new_user.name}! You have been successfully registered and logged in.', 'success')
             return redirect(url_for('index'))
         else:
@@ -471,6 +474,7 @@ def login():
         if logged_in_user:
             session['user_id'] = logged_in_user.id
             session['user_name'] = logged_in_user.name
+            session['role'] = logged_in_user.role
             flash(f'Welcome back, {logged_in_user.name}!', 'success')
             return redirect(url_for('index'))
         else:
@@ -483,6 +487,7 @@ def login():
 def logout():
     session.pop('user_id', None)
     session.pop('user_name', None)
+    session.pop('role', None)
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
 
@@ -676,6 +681,8 @@ def api_add_residency_period(child_id):
 
     db = SessionLocal()
     try:
+        if not auth.user_has_role(data['parent_id'], 'parent'):
+            return jsonify(message="Only parents may create residency periods."), 403
         # The child_manager functions now expect db_session as the first argument
         new_period = child_manager.add_residency_period(
             db_session=db,
@@ -746,6 +753,12 @@ def api_update_residency_period(period_id):
 
     db = SessionLocal()
     try:
+        if data.get('parent_id') and not auth.user_has_role(data.get('parent_id'), 'parent'):
+            return jsonify(message="Only parents may update residency periods."), 403
+        if not data.get('parent_id'):
+            existing = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+            if existing and not auth.user_has_role(existing.parent_id, 'parent'):
+                return jsonify(message="Only parents may update residency periods."), 403
         updated_period = child_manager.update_residency_period(
             db_session=db,
             period_id=period_id,
@@ -775,6 +788,11 @@ def api_update_residency_period(period_id):
 def api_delete_residency_period(period_id):
     db = SessionLocal()
     try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+        if not auth.user_has_role(period.parent_id, 'parent'):
+            return jsonify(message="Only parents may delete residency periods."), 403
         success = child_manager.delete_residency_period(db_session=db, period_id=period_id)
         if success:
             db.commit()

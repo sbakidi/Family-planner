@@ -31,8 +31,12 @@
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
                 {% if session.get('user_id') %}
+                    {% if session.get('role') == 'parent' %}
+                        <li><a href="{{ url_for('shifts_view') }}">Shifts</a></li>
+                        <li><a href="{{ url_for('children_view') }}">Children</a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('events_view') }}">Events</a></li>
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
-                    {# Add other authenticated links here, e.g., Profile, Dashboard #}
                 {% else %}
                     <li><a href="{{ url_for('login') }}">Login</a></li>
                     <li><a href="{{ url_for('register') }}">Register</a></li>

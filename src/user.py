@@ -15,6 +15,7 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String) # Storing hashed password
+    role = Column(String, nullable=False, default='parent')  # New role field
 
     # Relationship to Shifts (One-to-Many: User has many Shifts)
     shifts = relationship("Shift", back_populates="owner")
@@ -44,13 +45,14 @@ class User(Base):
     # For now, the focus is on the model definition.
 
     def __repr__(self):
-        return f"<User(id={self.id}, name='{self.name}', email='{self.email}')>"
+        return f"<User(id={self.id}, name='{self.name}', email='{self.email}', role='{self.role}')>"
 
     def to_dict(self, include_shifts=False, include_children=False, include_custodial_periods=False, include_shift_patterns=False): # Added include_shift_patterns
         data = {
             "id": self.id,
             "name": self.name,
-            "email": self.email
+            "email": self.email,
+            "role": self.role
             # Exclude hashed_password for security
         }
         if include_shifts and self.shifts: # Check if self.shifts is not None
