@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event, meal_plan  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager  # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -12,7 +12,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, meal_plan  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -415,6 +415,87 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
         return jsonify(message="An unexpected error occurred during shift generation."), 500
     finally:
         db.close()
+
+# --- Meal Plan API Endpoints ---
+
+@app.route('/recipes', methods=['POST'])
+def api_create_recipe():
+    data = request.get_json()
+    if not data or not all(k in data for k in ("name", "ingredients")):
+        return jsonify(message="Missing name or ingredients"), 400
+    recipe = meal_plan.create_recipe(
+        name=data['name'],
+        ingredients=data['ingredients'],
+        instructions=data.get('instructions')
+    )
+    if recipe:
+        return jsonify(recipe.to_dict()), 201
+    return jsonify(message="Failed to create recipe"), 400
+
+@app.route('/recipes/<int:recipe_id>', methods=['GET'])
+def api_get_recipe(recipe_id):
+    recipe = meal_plan.get_recipe(recipe_id)
+    if recipe:
+        return jsonify(recipe.to_dict()), 200
+    return jsonify(message="Recipe not found"), 404
+
+@app.route('/recipes/<int:recipe_id>', methods=['PUT'])
+def api_update_recipe(recipe_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No data provided for update"), 400
+    updated = meal_plan.update_recipe(
+        recipe_id,
+        name=data.get('name'),
+        ingredients=data.get('ingredients'),
+        instructions=data.get('instructions')
+    )
+    if updated:
+        return jsonify(updated.to_dict()), 200
+    return jsonify(message="Recipe not found"), 404
+
+@app.route('/recipes/<int:recipe_id>', methods=['DELETE'])
+def api_delete_recipe(recipe_id):
+    if meal_plan.delete_recipe(recipe_id):
+        return jsonify(message="Recipe deleted successfully"), 200
+    return jsonify(message="Recipe not found"), 404
+
+@app.route('/recipes', methods=['GET'])
+def api_list_recipes():
+    recipes = meal_plan.list_recipes()
+    return jsonify([r.to_dict() for r in recipes]), 200
+
+@app.route('/meal-plans', methods=['POST'])
+def api_create_meal_plan():
+    data = request.get_json()
+    if not data or not all(k in data for k in ("week_start", "recipe_ids")):
+        return jsonify(message="Missing week_start or recipe_ids"), 400
+    plan = meal_plan.create_meal_plan(
+        week_start_str=data['week_start'],
+        recipe_ids=data['recipe_ids']
+    )
+    if plan:
+        return jsonify(plan.to_dict(include_grocery=True)), 201
+    return jsonify(message="Failed to create meal plan"), 400
+
+@app.route('/meal-plans', methods=['GET'])
+def api_list_meal_plans():
+    plans = meal_plan.list_meal_plans()
+    return jsonify([p.to_dict() for p in plans]), 200
+
+@app.route('/meal-plans/<int:plan_id>', methods=['GET'])
+def api_get_meal_plan(plan_id):
+    plan = meal_plan.get_meal_plan(plan_id)
+    if plan:
+        return jsonify(plan.to_dict(include_grocery=True)), 200
+    return jsonify(message="Meal plan not found"), 404
+
+@app.route('/meal-plans/<int:plan_id>/groceries', methods=['GET'])
+def api_get_meal_plan_groceries(plan_id):
+    plan = meal_plan.get_meal_plan(plan_id)
+    if not plan:
+        return jsonify(message="Meal plan not found"), 404
+    return jsonify(grocery_list=meal_plan.generate_grocery_list(plan)), 200
 
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
