@@ -83,6 +83,23 @@ python app.py
 
 Visit `http://localhost:5000` in your browser.
 
+### API Usage
+
+Authenticate and obtain a token:
+
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email": "user@example.com", "password": "password"}'
+```
+
+Use the returned token with other endpoints:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+     http://localhost:5000/api/v1/events
+```
+
 ## Running Tests
 
 Install the requirements as above and run:

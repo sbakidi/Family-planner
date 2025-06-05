@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response, send_from_directory
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response, send_from_directory, Blueprint, g
 from sqlalchemy.exc import SQLAlchemyError
 import os  # For secret key
 from werkzeug.utils import secure_filename
@@ -10,6 +10,7 @@ from src.notification import get_user_queue
 
 
 from src.database import init_db, SessionLocal
+from src.token_manager import token_required, generate_token_for_user
 # Import residency_period model for init_db
 from src import analytics
 from src import residency_period
@@ -33,6 +34,19 @@ UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# API blueprint
+api_bp = Blueprint('api_v1', __name__)
+
+# Simple OpenAPI spec endpoint
+@api_bp.route('/openapi.json')
+def openapi_spec():
+    spec = {
+        "openapi": "3.0.0",
+        "info": {"title": "Family Planner API", "version": "1.0"},
+        "paths": {}
+    }
+    return jsonify(spec)
+
 # Optional: A generic error handler for unhandled exceptions
 @app.errorhandler(Exception)
 def handle_generic_error(e):
@@ -42,7 +56,7 @@ def handle_generic_error(e):
     response.status_code = 500
     return response
 
-@app.route('/auth/register', methods=['POST'])
+@api_bp.route('/auth/register', methods=['POST'])
 def register_user():
     try:
         data = request.get_json()
@@ -78,7 +92,7 @@ def register_user():
         return jsonify(message="An unexpected error occurred during registration."), 500
 
 
-@app.route('/auth/login', methods=['POST'])
+@api_bp.route('/auth/login', methods=['POST'])
 def login_user():
     try:
         data = request.get_json()
@@ -92,8 +106,11 @@ def login_user():
         logged_in_user = auth.login(email=email, password=password)
 
         if logged_in_user:
+
+            token = generate_token_for_user(logged_in_user.id)
             # logged_in_user is an SQLAlchemy User model instance
-            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email, role=logged_in_user.role), 200
+            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email, token=token, role=logged_in_user.role), 200
+
         else:
             # auth.login prints "Error: Email not found." or "Error: Incorrect password."
             return jsonify(message="Login failed: Invalid email or password."), 401 # Unauthorized
@@ -103,7 +120,8 @@ def login_user():
         return jsonify(message="An unexpected error occurred during login."), 500
 
 
-@app.route('/auth/logout', methods=['POST'])
+@api_bp.route('/auth/logout', methods=['POST'])
+@token_required
 def logout_user():
     # In a stateless API (common with tokens), logout is often handled client-side by deleting the token.
     # Server-side logout might involve invalidating a token if using a denylist.
@@ -115,7 +133,8 @@ def logout_user():
 
 # --- Child API Endpoints ---
 
-@app.route('/users/<int:user_id>/children', methods=['POST'])
+@api_bp.route('/users/<int:user_id>/children', methods=['POST'])
+@token_required
 def api_add_child(user_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "date_of_birth")):
@@ -141,20 +160,23 @@ def api_add_child(user_id):
         # child_manager.add_child prints errors
         return jsonify(message="Failed to add child. Invalid input or parent user not found."), 400
 
-@app.route('/children/<int:child_id>', methods=['GET'])
+@api_bp.route('/children/<int:child_id>', methods=['GET'])
+@token_required
 def api_get_child_details(child_id):
     child_obj = child_manager.get_child_details(child_id)
     if child_obj:
         return jsonify(child_obj.to_dict(include_parents=True)), 200
     return jsonify(message="Child not found"), 404
 
-@app.route('/users/<int:user_id>/children', methods=['GET'])
+@api_bp.route('/users/<int:user_id>/children', methods=['GET'])
+@token_required
 def api_get_user_children(user_id):
     # Optional: Validate user_id exists
     children_list = child_manager.get_user_children(user_id)
     return jsonify([c.to_dict(include_parents=False) for c in children_list]), 200 # include_parents=False to simplify
 
-@app.route('/children/<int:child_id>', methods=['PUT'])
+@api_bp.route('/children/<int:child_id>', methods=['PUT'])
+@token_required
 def api_update_child(child_id):
     data = request.get_json()
     if not data:
@@ -171,13 +193,15 @@ def api_update_child(child_id):
         return jsonify(updated_child_obj.to_dict(include_parents=True)), 200
     return jsonify(message="Child not found or update failed"), 404 # Or 400
 
-@app.route('/children/<int:child_id>', methods=['DELETE'])
+@api_bp.route('/children/<int:child_id>', methods=['DELETE'])
+@token_required
 def api_delete_child(child_id):
     if child_manager.remove_child(child_id):
         return jsonify(message="Child deleted successfully"), 200 # Or 204
     return jsonify(message="Child not found or delete failed"), 404
 
-@app.route('/children/<int:child_id>/parents', methods=['POST'])
+@api_bp.route('/children/<int:child_id>/parents', methods=['POST'])
+@token_required
 def api_add_parent_to_child(child_id):
     data = request.get_json()
     if not data or 'user_id' not in data:
@@ -209,7 +233,8 @@ def api_add_parent_to_child(child_id):
 
 # --- Event API Endpoints ---
 
-@app.route('/events', methods=['POST'])
+@api_bp.route('/events', methods=['POST'])
+@token_required
 def api_create_event():
     data = request.get_json()
     if not data or not all(k in data for k in ("title", "start_time", "end_time")):
@@ -238,26 +263,30 @@ def api_create_event():
         # event_manager.create_event prints errors
         return jsonify(message="Failed to create event. Invalid input or linked user/child not found."), 400
 
-@app.route('/events/<int:event_id>', methods=['GET'])
+@api_bp.route('/events/<int:event_id>', methods=['GET'])
+@token_required
 def api_get_event_details(event_id):
     event_obj = event_manager.get_event_details(event_id)
     if event_obj:
         return jsonify(event_obj.to_dict()), 200
     return jsonify(message="Event not found"), 404
 
-@app.route('/users/<int:user_id>/events', methods=['GET'])
+@api_bp.route('/users/<int:user_id>/events', methods=['GET'])
+@token_required
 def api_get_user_events(user_id):
     # Optional: Validate user_id exists
     events_list = event_manager.get_events_for_user(user_id)
     return jsonify([e.to_dict(include_user=False) for e in events_list]), 200 # Don't include user again
 
-@app.route('/children/<int:child_id>/events', methods=['GET'])
+@api_bp.route('/children/<int:child_id>/events', methods=['GET'])
+@token_required
 def api_get_child_events(child_id):
     # Optional: Validate child_id exists
     events_list = event_manager.get_events_for_child(child_id)
     return jsonify([e.to_dict(include_child=False) for e in events_list]), 200 # Don't include child again
 
-@app.route('/events/<int:event_id>', methods=['PUT'])
+@api_bp.route('/events/<int:event_id>', methods=['PUT'])
+@token_required
 def api_update_event(event_id):
     data = request.get_json()
     if not data:
@@ -282,7 +311,8 @@ def api_update_event(event_id):
         return jsonify(updated_event_obj.to_dict()), 200
     return jsonify(message="Event not found or update failed"), 404 # Or 400
 
-@app.route('/events/<int:event_id>', methods=['DELETE'])
+@api_bp.route('/events/<int:event_id>', methods=['DELETE'])
+@token_required
 def api_delete_event(event_id):
     if event_manager.delete_event(event_id):
         return jsonify(message="Event deleted successfully"), 200 # Or 204
@@ -378,6 +408,10 @@ def api_delete_task(task_id):
 
 # --- Shift Pattern API Endpoints ---
 
+
+@api_bp.route('/shift-patterns', methods=['POST'])
+@token_required
+
 @app.route('/bookings', methods=['POST'])
 def api_create_booking():
     data = request.get_json()
@@ -430,6 +464,7 @@ def api_delete_booking(booking_id):
 
 
 @app.route('/shift-patterns', methods=['POST'])
+
 def api_create_global_shift_pattern():
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
@@ -446,7 +481,8 @@ def api_create_global_shift_pattern():
         return jsonify(pattern.to_dict()), 201
     return jsonify(message="Failed to create global shift pattern"), 400
 
-@app.route('/users/<int:user_id>/shift-patterns', methods=['POST'])
+@api_bp.route('/users/<int:user_id>/shift-patterns', methods=['POST'])
+@token_required
 def api_create_user_shift_pattern(user_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
@@ -470,19 +506,22 @@ def api_create_user_shift_pattern(user_id):
         return jsonify(pattern.to_dict()), 201
     return jsonify(message="Failed to create user-specific shift pattern"), 400
 
-@app.route('/shift-patterns/<int:pattern_id>', methods=['GET'])
+@api_bp.route('/shift-patterns/<int:pattern_id>', methods=['GET'])
+@token_required
 def api_get_shift_pattern(pattern_id):
     pattern = shift_pattern_manager.get_shift_pattern(pattern_id)
     if pattern:
         return jsonify(pattern.to_dict()), 200
     return jsonify(message="Shift pattern not found"), 404
 
-@app.route('/shift-patterns', methods=['GET'])
+@api_bp.route('/shift-patterns', methods=['GET'])
+@token_required
 def api_get_global_shift_patterns():
     patterns = shift_pattern_manager.get_global_shift_patterns()
     return jsonify([p.to_dict() for p in patterns]), 200
 
-@app.route('/users/<int:user_id>/shift-patterns', methods=['GET'])
+@api_bp.route('/users/<int:user_id>/shift-patterns', methods=['GET'])
+@token_required
 def api_get_user_shift_patterns(user_id):
     # Optional: Validate user_id exists
     db = SessionLocal()
@@ -494,7 +533,8 @@ def api_get_user_shift_patterns(user_id):
     patterns = shift_pattern_manager.get_shift_patterns_for_user(user_id)
     return jsonify([p.to_dict() for p in patterns]), 200
 
-@app.route('/shift-patterns/<int:pattern_id>', methods=['PUT'])
+@api_bp.route('/shift-patterns/<int:pattern_id>', methods=['PUT'])
+@token_required
 def api_update_shift_pattern(pattern_id):
     data = request.get_json()
     if not data:
@@ -524,7 +564,8 @@ def api_update_shift_pattern(pattern_id):
         return jsonify(updated_pattern.to_dict()), 200
     return jsonify(message="Shift pattern not found or update failed"), 404 # Or 400
 
-@app.route('/shift-patterns/<int:pattern_id>', methods=['DELETE'])
+@api_bp.route('/shift-patterns/<int:pattern_id>', methods=['DELETE'])
+@token_required
 def api_delete_shift_pattern(pattern_id):
     # Similar ownership/admin check as in PUT would be needed here.
     # pattern_to_delete = shift_pattern_manager.get_shift_pattern(pattern_id)
@@ -538,7 +579,8 @@ def api_delete_shift_pattern(pattern_id):
         return jsonify(message="Shift pattern deleted successfully"), 200 # Or 204
     return jsonify(message="Shift pattern not found or delete failed"), 404
 
-@app.route('/users/<int:user_id>/shift-patterns/<int:pattern_id>/generate-shifts', methods=['POST'])
+@api_bp.route('/users/<int:user_id>/shift-patterns/<int:pattern_id>/generate-shifts', methods=['POST'])
+@token_required
 def api_generate_shifts_from_pattern(user_id, pattern_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("start_date", "end_date")):
@@ -1146,7 +1188,8 @@ def download_document(filename):
 
 
 # The previous residency period POST route:
-@app.route('/children/<int:child_id>/residency-periods', methods=['POST'])
+@api_bp.route('/children/<int:child_id>/residency-periods', methods=['POST'])
+@token_required
 def api_add_residency_period(child_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("parent_id", "start_datetime", "end_datetime")):
@@ -1182,7 +1225,8 @@ def api_add_residency_period(child_id):
     finally:
         db.close()
 
-@app.route('/children/<int:child_id>/residency-periods', methods=['GET'])
+@api_bp.route('/children/<int:child_id>/residency-periods', methods=['GET'])
+@token_required
 def api_get_residency_periods_for_child(child_id):
     start_date_filter = request.args.get('start_date') # YYYY-MM-DD
     end_date_filter = request.args.get('end_date')     # YYYY-MM-DD
@@ -1207,7 +1251,8 @@ def api_get_residency_periods_for_child(child_id):
     finally:
         db.close()
 
-@app.route('/residency-periods/<int:period_id>', methods=['GET'])
+@api_bp.route('/residency-periods/<int:period_id>', methods=['GET'])
+@token_required
 def api_get_residency_period_details(period_id):
     db = SessionLocal()
     try:
@@ -1218,7 +1263,8 @@ def api_get_residency_period_details(period_id):
     finally:
         db.close()
 
-@app.route('/residency-periods/<int:period_id>', methods=['PUT'])
+@api_bp.route('/residency-periods/<int:period_id>', methods=['PUT'])
+@token_required
 def api_update_residency_period(period_id):
     data = request.get_json()
     if not data:
@@ -1257,7 +1303,8 @@ def api_update_residency_period(period_id):
     finally:
         db.close()
 
-@app.route('/residency-periods/<int:period_id>', methods=['DELETE'])
+@api_bp.route('/residency-periods/<int:period_id>', methods=['DELETE'])
+@token_required
 def api_delete_residency_period(period_id):
     db = SessionLocal()
     try:
@@ -1281,6 +1328,10 @@ def api_delete_residency_period(period_id):
         return jsonify(message="An unexpected error occurred."), 500
     finally:
         db.close()
+
+
+@api_bp.route('/children/<int:child_id>/residency', methods=['GET'])
+@token_required
 
 # ----- Residency change request endpoints -----
 
@@ -1364,6 +1415,7 @@ def api_decline_residency_change(period_id):
         db.close()
 
 @app.route('/children/<int:child_id>/residency', methods=['GET'])
+
 def api_get_child_residency_on_date(child_id):
     date_param = request.args.get('date')
     if not date_param:
@@ -1398,12 +1450,17 @@ def api_get_child_residency_on_date(child_id):
     finally:
         db.close()
 
+# Register API blueprint
+app.register_blueprint(api_bp, url_prefix="/api/v1")
+
+
 # --- Google Calendar Endpoints ---
 
 @app.route('/users/<int:user_id>/calendar/sync', methods=['POST'])
 def api_sync_calendar(user_id):
     events = calendar_sync.sync_user_calendar(user_id)
     return jsonify(message="Calendar synced", events=len(events)), 200
+
 
 
 if __name__ == '__main__':

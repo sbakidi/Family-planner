@@ -56,6 +56,8 @@ class TestAPIChildrenResidency(unittest.TestCase):
         # Default users for tests
         self.user1 = self._create_user_directly(name="User One", email="user1@example.com", password="password1")
         self.user2 = self._create_user_directly(name="User Two", email="user2@example.com", password="password2")
+        from src.token_manager import generate_token_for_user
+        self.token1 = generate_token_for_user(self.user1.id)
 
 
     def tearDown(self):
@@ -75,12 +77,15 @@ class TestAPIChildrenResidency(unittest.TestCase):
         self.db.refresh(user)
         return user
 
+    def _auth_headers(self):
+        return {"Authorization": f"Bearer {self.token1}"}
+
     def _create_child_for_user_api(self, user_id, child_name="Test Child", dob="2020-01-01"):
-        response = self.client.post(f'/users/{user_id}/children', json={
+        response = self.client.post(f'/api/v1/users/{user_id}/children', json={
             "name": child_name,
             "date_of_birth": dob,
             "school_info": "Test School"
-        })
+        }, headers=self._auth_headers())
         self.assertEqual(response.status_code, 201, f"Failed to create child via API: {response.get_data(as_text=True)}")
         return response.get_json()
 
@@ -102,14 +107,14 @@ class TestAPIChildrenResidency(unittest.TestCase):
         child_data = self._create_child_for_user_api(self.user1.id, "Daisy")
         child_id = child_data['id']
 
-        response = self.client.get(f'/children/{child_id}')
+        response = self.client.get(f'/api/v1/children/{child_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "Daisy")
         self.assertEqual(data['id'], child_id)
 
     def test_get_child_details_not_found(self):
-        response = self.client.get('/children/99999')
+        response = self.client.get('/api/v1/children/99999', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404)
 
     def test_get_user_children_success(self):
@@ -118,7 +123,7 @@ class TestAPIChildrenResidency(unittest.TestCase):
         # Create a child for another user to ensure filtering
         self._create_child_for_user_api(self.user2.id, "Child C")
 
-        response = self.client.get(f'/users/{self.user1.id}/children')
+        response = self.client.get(f'/api/v1/users/{self.user1.id}/children', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -131,7 +136,7 @@ class TestAPIChildrenResidency(unittest.TestCase):
         child_id = child_data['id']
 
         update_payload = {"name": "Updated Name", "school_info": "New School"}
-        response = self.client.put(f'/children/{child_id}', json=update_payload)
+        response = self.client.put(f'/api/v1/children/{child_id}', json=update_payload, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "Updated Name")
@@ -153,7 +158,7 @@ class TestAPIChildrenResidency(unittest.TestCase):
         self.db.commit()
         res_period_id = res_period.id
 
-        response = self.client.delete(f'/children/{child_id}')
+        response = self.client.delete(f'/api/v1/children/{child_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
 
         self.assertIsNone(self.db.query(Child).get(child_id))
@@ -163,7 +168,7 @@ class TestAPIChildrenResidency(unittest.TestCase):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
 
-        response = self.client.post(f'/children/{child_id}/parents', json={"user_id": self.user2.id})
+        response = self.client.post(f'/api/v1/children/{child_id}/parents', json={"user_id": self.user2.id}, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
 
         # Verify in DB
@@ -173,13 +178,13 @@ class TestAPIChildrenResidency(unittest.TestCase):
         self.assertIn(self.user2.id, parent_ids)
 
     def test_add_parent_to_child_child_not_found(self):
-        response = self.client.post('/children/99999/parents', json={"user_id": self.user1.id})
+        response = self.client.post('/api/v1/children/99999/parents', json={"user_id": self.user1.id}, headers=self._auth_headers())
         self.assertEqual(response.status_code, 404) # API should check child existence
 
     def test_add_parent_to_child_new_parent_not_found(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        response = self.client.post(f'/children/{child_id}/parents', json={"user_id": 99999})
+        response = self.client.post(f'/api/v1/children/{child_id}/parents', json={"user_id": 99999}, headers=self._auth_headers())
         self.assertEqual(response.status_code, 404) # API should check new parent existence
 
 
@@ -194,7 +199,7 @@ class TestAPIChildrenResidency(unittest.TestCase):
             "end_datetime": "2024-01-05 18:00:00",
             "notes": "Week with User One"
         }
-        response = self.client.post(f'/children/{child_id}/residency-periods', json=payload)
+        response = self.client.post(f'/api/v1/children/{child_id}/residency-periods', json=payload, headers=self._auth_headers())
         self.assertEqual(response.status_code, 201)
         data = response.get_json()
         self.assertEqual(data['child_id'], child_id)
@@ -212,10 +217,10 @@ class TestAPIChildrenResidency(unittest.TestCase):
         # Add some periods
         rp1_payload = {"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"}
         rp2_payload = {"parent_id": self.user2.id, "start_datetime": "2024-01-05 18:00", "end_datetime": "2024-01-10 10:00"}
-        self.client.post(f'/children/{child_id}/residency-periods', json=rp1_payload)
-        self.client.post(f'/children/{child_id}/residency-periods', json=rp2_payload)
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json=rp1_payload, headers=self._auth_headers())
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json=rp2_payload, headers=self._auth_headers())
 
-        response = self.client.get(f'/children/{child_id}/residency-periods')
+        response = self.client.get(f'/api/v1/children/{child_id}/residency-periods', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -223,11 +228,11 @@ class TestAPIChildrenResidency(unittest.TestCase):
     def test_get_residency_periods_for_child_with_date_filters(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"})
-        self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user2.id, "start_datetime": "2024-01-05 18:00", "end_datetime": "2024-01-10 10:00"})
-        self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-10 10:00", "end_datetime": "2024-01-15 18:00"})
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"}, headers=self._auth_headers())
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user2.id, "start_datetime": "2024-01-05 18:00", "end_datetime": "2024-01-10 10:00"}, headers=self._auth_headers())
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-10 10:00", "end_datetime": "2024-01-15 18:00"}, headers=self._auth_headers())
 
-        response = self.client.get(f'/children/{child_id}/residency-periods?start_date=2024-01-04&end_date=2024-01-11')
+        response = self.client.get(f'/api/v1/children/{child_id}/residency-periods?start_date=2024-01-04&end_date=2024-01-11', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         # Expecting 3 periods: first one overlaps start, second is within, third overlaps end
@@ -236,27 +241,27 @@ class TestAPIChildrenResidency(unittest.TestCase):
     def test_get_residency_period_details_success(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        rp_res = self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00", "notes": "Test notes"})
+        rp_res = self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00", "notes": "Test notes"}, headers=self._auth_headers())
         period_id = rp_res.get_json()['id']
 
-        response = self.client.get(f'/residency-periods/{period_id}')
+        response = self.client.get(f'/api/v1/residency-periods/{period_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['id'], period_id)
         self.assertEqual(data['notes'], "Test notes")
 
     def test_get_residency_period_details_not_found(self):
-        response = self.client.get('/residency-periods/99999')
+        response = self.client.get('/api/v1/residency-periods/99999', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404)
 
     def test_update_residency_period_success(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        rp_res = self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"})
+        rp_res = self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"}, headers=self._auth_headers())
         period_id = rp_res.get_json()['id']
 
         update_payload = {"notes": "Updated notes", "parent_id": self.user2.id}
-        response = self.client.put(f'/residency-periods/{period_id}', json=update_payload)
+        response = self.client.put(f'/api/v1/residency-periods/{period_id}', json=update_payload, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['notes'], "Updated notes")
@@ -269,19 +274,19 @@ class TestAPIChildrenResidency(unittest.TestCase):
     def test_delete_residency_period_success(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        rp_res = self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"})
+        rp_res = self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-01-01 10:00", "end_datetime": "2024-01-05 18:00"}, headers=self._auth_headers())
         period_id = rp_res.get_json()['id']
 
-        response = self.client.delete(f'/residency-periods/{period_id}')
+        response = self.client.delete(f'/api/v1/residency-periods/{period_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(self.db.query(ResidencyPeriod).get(period_id))
 
     def test_get_child_residency_on_date_success(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-03-01 10:00", "end_datetime": "2024-03-05 18:00"})
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-03-01 10:00", "end_datetime": "2024-03-05 18:00"}, headers=self._auth_headers())
 
-        response = self.client.get(f'/children/{child_id}/residency?date=2024-03-03')
+        response = self.client.get(f'/api/v1/children/{child_id}/residency?date=2024-03-03', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 1)
@@ -291,9 +296,9 @@ class TestAPIChildrenResidency(unittest.TestCase):
     def test_get_child_residency_on_date_no_period(self):
         child_data = self._create_child_for_user_api(self.user1.id)
         child_id = child_data['id']
-        self.client.post(f'/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-03-01 10:00", "end_datetime": "2024-03-05 18:00"})
+        self.client.post(f'/api/v1/children/{child_id}/residency-periods', json={"parent_id": self.user1.id, "start_datetime": "2024-03-01 10:00", "end_datetime": "2024-03-05 18:00"}, headers=self._auth_headers())
 
-        response = self.client.get(f'/children/{child_id}/residency?date=2024-03-10')
+        response = self.client.get(f'/api/v1/children/{child_id}/residency?date=2024-03-10', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404) # Expect 404 if no period found
 
 if __name__ == '__main__':

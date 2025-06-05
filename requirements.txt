@@ -1,6 +1,8 @@
 Flask
 SQLAlchemy
 pytest
+flask-restx
 google-api-python-client
 google-auth-oauthlib
+
 
