@@ -5,7 +5,14 @@ Een eenvoudige planner voor ouders om diensten, evenementen en verblijfsperiodes
 ## Installatie
 
 1. Zorg dat Python 3 geïnstalleerd is.
-2. Installeer de vereisten uit [`requirements.txt`](requirements.txt):
+2. (Aanbevolen) Maak en activeer een virtual environment:
+   ```bash
+   # Zorg ervoor dat je python3 en pip voor python3 gebruikt
+   python3 -m venv venv
+   # Op Windows:
+   # venv\Scripts\activate
+   # Op macOS/Linux:
+   # source venv/bin/activate
    ```bash
    pip install -r requirements.txt
    ```
