@@ -1,9 +1,11 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event, grocery  # Models
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync  # Managers
+from src.notification import get_user_queue
+
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -528,6 +530,21 @@ def logout():
     session.pop('user_name', None)
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
+
+@app.route('/notifications/stream')
+def notifications_stream():
+    if 'user_id' not in session:
+        return "Unauthorized", 401
+
+    user_id = session['user_id']
+    q = get_user_queue(user_id)
+
+    def event_stream():
+        while True:
+            data = q.get()
+            yield f"data: {data}\n\n"
+
+    return Response(event_stream(), mimetype='text/event-stream')
 
 # --- Shift Web Routes ---
 
