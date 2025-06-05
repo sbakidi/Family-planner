@@ -2,6 +2,11 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, timedelta
+import json
+
+from src.notification import send_notification
+from src.child import Child
+
 
 from src.database import SessionLocal
 from src.event import Event
@@ -46,6 +51,20 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
         db.add(new_event)
         db.commit()
         db.refresh(new_event)
+        # Notify linked user or parents of linked child
+        if new_event.user_id:
+            send_notification(new_event.user_id, {
+                "type": "event_created",
+                "event": new_event.to_dict(include_user=False, include_child=False)
+            })
+        elif new_event.child_id:
+            child = db.query(Child).filter(Child.id == new_event.child_id).first()
+            if child:
+                for parent in child.parents:
+                    send_notification(parent.id, {
+                        "type": "event_created",
+                        "event": new_event.to_dict(include_user=False, include_child=False)
+                    })
         return new_event
     except SQLAlchemyError as e:
         db.rollback()
@@ -139,6 +158,19 @@ def update_event(event_id: int, title: str = None, description: str = None,
         if updated:
             db.commit()
             db.refresh(event)
+            if event.user_id:
+                send_notification(event.user_id, {
+                    "type": "event_updated",
+                    "event": event.to_dict(include_user=False, include_child=False)
+                })
+            elif event.child_id:
+                child = db.query(Child).filter(Child.id == event.child_id).first()
+                if child:
+                    for parent in child.parents:
+                        send_notification(parent.id, {
+                            "type": "event_updated",
+                            "event": event.to_dict(include_user=False, include_child=False)
+                        })
         return event
     except SQLAlchemyError as e:
         db.rollback()
