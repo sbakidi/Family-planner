@@ -11,6 +11,9 @@
                 <li>
                     <strong>{{ event.title }}</strong>
                     <p>{{ event.description if event.description else 'No description.' }}</p>
+                    {% if event.category %}
+                        <em>Category: {{ event.category }}</em><br>
+                    {% endif %}
                     <small>
                         From: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if event.start_time else 'N/A' }} <br>
                         To: {{ event.end_time.strftime('%Y-%m-%d %H:%M') if event.end_time else 'N/A' }}
@@ -48,6 +51,10 @@
         <div>
             <label for="description">Description (Optional):</label>
             <textarea id="description" name="description"></textarea>
+        </div>
+        <div>
+            <label for="category">Category (Optional):</label>
+            <input type="text" id="category" name="category">
         </div>
         <div>
             <label for="start_time">Start Time:</label>

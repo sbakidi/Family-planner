@@ -2,11 +2,12 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager  # Managers
 from src.database import init_db, SessionLocal
-# Import residency_period model for init_db
-from src import residency_period
+from src import residency_period  # Import residency_period model for init_db
+from src import health_device
+from datetime import datetime, timedelta
 
 # Initialize the database (create tables if they don't exist)
 # This should be called once when the application starts.
@@ -211,7 +212,8 @@ def api_create_event():
         start_time_str=data['start_time'],
         end_time_str=data['end_time'],
         linked_user_id=data.get('user_id'), # Optional
-        linked_child_id=data.get('child_id') # Optional
+        linked_child_id=data.get('child_id'), # Optional
+        category=data.get('category')
     )
     if new_event_obj:
         return jsonify(new_event_obj.to_dict()), 201
@@ -256,6 +258,7 @@ def api_update_event(event_id):
         end_time_str=data.get('end_time'),
         linked_user_id=data.get('user_id') if not unlink_user else None,
         linked_child_id=data.get('child_id') if not unlink_child else None,
+        category=data.get('category'),
         unlink_user=unlink_user,
         unlink_child=unlink_child
     )
@@ -570,6 +573,7 @@ def add_event_web():
     user_id = session['user_id']
     title = request.form.get('title')
     description = request.form.get('description')
+    category = request.form.get('category')
     start_time_str_html = request.form.get('start_time') # HTML datetime-local
     end_time_str_html = request.form.get('end_time')     # HTML datetime-local
     child_id_str = request.form.get('child_id')
@@ -606,7 +610,8 @@ def add_event_web():
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
         linked_user_id=user_id, # Auto-link to current user
-        linked_child_id=linked_child_id if linked_child_id else None # Ensure None if 0 or empty
+        linked_child_id=linked_child_id if linked_child_id else None, # Ensure None if 0 or empty
+        category=category
     )
 
     if new_event:
@@ -616,6 +621,24 @@ def add_event_web():
         flash('Failed to add event. Please check your input or try again.', 'danger')
 
     return redirect(url_for('events_view'))
+
+
+@app.route('/health', methods=['GET'])
+def health_dashboard():
+    if 'user_id' not in session:
+        flash('Please login to view health data.', 'warning')
+        return redirect(url_for('login'))
+
+    device = health_device.device_from_env()
+    summary = None
+    if device:
+        today = datetime.today().date()
+        start = today - timedelta(days=6)
+        steps = device.fetch_steps(start, today)
+        sleep = device.fetch_sleep(start, today)
+        summary = health_device.summarize_health(steps, sleep)
+
+    return render_template('health.html', summary=summary)
 
 
 # --- Child Web Routes ---

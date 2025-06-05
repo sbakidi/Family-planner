@@ -22,7 +22,8 @@ def _parse_datetime(datetime_str: str):
         return None
 
 def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
-                 linked_user_id: int = None, linked_child_id: int = None):
+                 linked_user_id: int = None, linked_child_id: int = None,
+                 category: str = None):
     db = SessionLocal()
     try:
         start_time_dt = _parse_datetime(start_time_str)
@@ -36,6 +37,7 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
         new_event = Event(
             title=title,
             description=description,
+            category=category,
             start_time=start_time_dt,
             end_time=end_time_dt,
             user_id=linked_user_id, # This is the FK field in Event model
@@ -90,6 +92,7 @@ def get_events_for_child(child_id: int):
 def update_event(event_id: int, title: str = None, description: str = None,
                  start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
+                 category: str = None,
                  unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
     db = SessionLocal()
     try:
@@ -104,6 +107,9 @@ def update_event(event_id: int, title: str = None, description: str = None,
             updated = True
         if description is not None:
             event.description = description
+            updated = True
+        if category is not None:
+            event.category = category
             updated = True
         if start_time_str is not None:
             start_time_dt = _parse_datetime(start_time_str)
