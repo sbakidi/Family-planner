@@ -13,7 +13,7 @@ from src.database import initialize_database_for_application, create_tables, dro
 from src.user import User
 from src.child import Child
 from src.event import Event
-from src import event_manager, auth, child_manager # For creating test users and children
+from src import event_manager, auth, child_manager, shift_manager # For creating test users and children
 
 class TestEventManager(unittest.TestCase):
 
@@ -180,6 +180,22 @@ class TestEventManager(unittest.TestCase):
         result = event_manager.delete_event(non_existent_event_id)
         self.assertFalse(result)
         self.assertEqual(self.db.query(Event).count(), 1)
+
+    def test_detect_conflicts(self):
+        shift_manager.add_shift(self.test_user_id, "2024-06-01 09:00", "2024-06-01 17:00", "Work")
+        child_manager.add_residency_period(self.db, self.test_child_id, self.another_user_id,
+                                           "2024-06-02 00:00:00", "2024-06-03 00:00:00")
+        self.db.commit()
+
+        result = event_manager.detect_conflicts("2024-06-01 10:00", "2024-06-01 12:00",
+                                                user_id=self.test_user_id,
+                                                child_id=self.test_child_id)
+        self.assertIn("shift", result["conflicts"])
+
+        result2 = event_manager.detect_conflicts("2024-06-02 10:00", "2024-06-02 12:00",
+                                                 user_id=self.test_user_id,
+                                                 child_id=self.test_child_id)
+        self.assertIn("residency_parent", result2["conflicts"])
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,14 +1,17 @@
 # import uuid # No longer needed for generating event_ids
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 from src.notification import send_notification
 from src.child import Child
 
+
 from src.database import SessionLocal
 from src.event import Event
+from src.shift import Shift
+from src.residency_period import ResidencyPeriod
 # User and Child models might be needed if we want to validate existence of user_id/child_id before linking
 # from src.user import User
 # from src.child import Child
@@ -191,5 +194,53 @@ def delete_event(event_id: int):
         db.rollback()
         print(f"Database error deleting event: {e}")
         return False
+    finally:
+        db.close()
+
+
+def detect_conflicts(start_time_str: str, end_time_str: str,
+                     user_id: int = None, child_id: int = None):
+    """Check for shift or residency conflicts for a proposed event."""
+    start_dt = _parse_datetime(start_time_str)
+    end_dt = _parse_datetime(end_time_str)
+    if not start_dt or not end_dt:
+        return {"conflicts": ["invalid_datetime"]}
+
+    db = SessionLocal()
+    conflicts = []
+    latest_end = None
+    try:
+        if user_id:
+            overlapping_shifts = db.query(Shift).filter(
+                Shift.user_id == user_id,
+                Shift.start_time < end_dt,
+                Shift.end_time > start_dt
+            ).all()
+            if overlapping_shifts:
+                conflicts.append("shift")
+                latest_end = max(s.end_time for s in overlapping_shifts)
+
+        if child_id:
+            periods = db.query(ResidencyPeriod).filter(
+                ResidencyPeriod.child_id == child_id,
+                ResidencyPeriod.start_datetime <= start_dt,
+                ResidencyPeriod.end_datetime >= end_dt
+            ).all()
+            if not periods:
+                conflicts.append("residency")
+            elif user_id is not None and all(p.parent_id != user_id for p in periods):
+                conflicts.append("residency_parent")
+                latest_end = max(p.end_datetime for p in periods)
+
+        suggestion = None
+        if conflicts:
+            shift_end = latest_end or end_dt
+            suggested_start = (shift_end + timedelta(hours=1))
+            suggested_end = suggested_start + (end_dt - start_dt)
+            suggestion = {
+                "suggested_start": suggested_start.strftime('%Y-%m-%d %H:%M'),
+                "suggested_end": suggested_end.strftime('%Y-%m-%d %H:%M')
+            }
+        return {"conflicts": conflicts, **(suggestion or {})}
     finally:
         db.close()
