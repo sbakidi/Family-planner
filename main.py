@@ -1,4 +1,5 @@
-from src import auth, shift_manager, child_manager, event_manager
+from src import auth, shift_manager, child_manager, event_manager, calendar_sync, expense_manager, school_import
+
 
 current_user = None # Store User object or user_id
 
@@ -21,7 +22,12 @@ def display_main_menu():
         # Option 9 (View Child Events) might be too specific for this initial CLI,
         # but including for completeness based on example.
         print("9. View My Child Events (Specify Child ID)")
-        print("10. Logout")
+        print("10. Sync Google Calendar")
+        print("11. Add Expense")
+        print("12. View Expenses")
+        print("13. Import School Calendar (.ics)")
+        print("14. Logout")
+
     print("0. Exit")
     return input("Choose an option: ")
 
@@ -205,6 +211,55 @@ def handle_view_my_child_events():
     for event in events:
         print(f"ID: {event.event_id}, Title: {event.title}, Start: {event.start_time}, End: {event.end_time}, Desc: {event.description}")
 
+        
+def handle_add_expense():
+    if not current_user:
+        print("Error: You must be logged in to add an expense.")
+        return
+
+    description = input("Expense description: ")
+    amount_input = input("Amount: ")
+    child_id_input = input("Child ID (optional): ")
+    try:
+        amount = float(amount_input)
+    except ValueError:
+        print("Invalid amount.")
+        return
+
+    child_id = int(child_id_input) if child_id_input else None
+    exp = expense_manager.add_expense(description, amount, current_user.user_id, child_id)
+    if exp:
+        print("Expense added successfully.")
+    else:
+        print("Error adding expense.")
+
+def handle_view_expenses():
+    expenses = expense_manager.get_all_expenses()
+    if not expenses:
+        print("No expenses found.")
+        return
+    for exp in expenses:
+        child_part = f" for child {exp.child_id}" if exp.child_id else ""
+        print(f"ID: {exp.id} - {exp.description} - ${exp.amount:.2f}{child_part}")
+
+def handle_sync_calendar():
+    if not current_user:
+        print("Error: You must be logged in to sync calendar.")
+        return
+    # Start OAuth flow if token is missing
+    if not getattr(current_user, 'calendar_token', None):
+        print("No Google credentials stored. Starting authorization...")
+        calendar_sync.authorize_user(current_user.id)
+    calendar_sync.sync_user_calendar(current_user.id)
+    print("Calendar synced.")
+
+
+
+def handle_import_school_calendar():
+    path = input("Enter path to .ics file: ")
+    imported = school_import.import_school_calendar(path)
+    print(f"Imported {len(imported)} events from school calendar.")
+
 
 if __name__ == "__main__":
     # Initialize the database (create tables if they don't exist)
@@ -215,7 +270,7 @@ if __name__ == "__main__":
         init_db()
         # You might want to import models here too if init_db needs them to be defined
         # For example, if init_db() itself doesn't import them for Base.metadata.create_all()
-        from src import user, shift, child, event # Ensure models are loaded for init_db
+        from src import user, shift, child, event, expense  # Ensure models are loaded for init_db
     except Exception as e:
         print(f"Error initializing database: {e}")
         # Decide if the app should exit or continue if DB init fails.
@@ -251,7 +306,17 @@ if __name__ == "__main__":
             elif choice == '9':
                 handle_view_my_child_events()
             elif choice == '10':
+              handle_sync_calendar()
+            elif choice == '11':
+                handle_add_expense()
+            elif choice == '12':
+                handle_view_expenses()
+            elif choice == '13':
+               handle_import_school_calendar()
+            elif choice == '14':
                 auth.logout() # Assuming auth.logout() is defined and handles state
+
+               
                 current_user = None
                 print("Logged out successfully.")
             elif choice == '0':
