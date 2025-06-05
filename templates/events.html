@@ -11,11 +11,20 @@
                 <li>
                     <strong>{{ event.title }}</strong>
                     <p>{{ event.description if event.description else 'No description.' }}</p>
+                    {% if event.destination %}
+                        <p>Destination: {{ event.destination }}</p>
+                    {% endif %}
                     <small>
                         From: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if event.start_time else 'N/A' }} <br>
                         To: {{ event.end_time.strftime('%Y-%m-%d %H:%M') if event.end_time else 'N/A' }}
                     </small>
                     <br>
+                    {% if event.recommended_leave_time %}
+                        <em>Leave by {{ event.recommended_leave_time.strftime('%Y-%m-%d %H:%M') }}</em><br>
+                    {% endif %}
+                    {% if event.traffic_warning %}
+                        <strong style="color:red;">Heavy traffic reported</strong><br>
+                    {% endif %}
                     <small>
                         {% if event.user_id and event.child_id %}
                             Linked to: User (Self) and Child ID {{ event.child_id }}
@@ -56,6 +65,10 @@
         <div>
             <label for="end_time">End Time:</label>
             <input type="datetime-local" id="end_time" name="end_time" required>
+        </div>
+        <div>
+            <label for="destination">Destination (Optional):</label>
+            <input type="text" id="destination" name="destination">
         </div>
         <div>
             <label for="child_id">Link to Child (Optional):</label>
