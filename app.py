@@ -3,9 +3,8 @@ from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event, grocery  # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager  # Managers
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager  # Managers
 from src.notification import get_user_queue
-
 
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
@@ -15,7 +14,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event, shift_swap  # Models
+    from src import user, shift, child, event, shift_swap, expense  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -709,6 +708,55 @@ def add_event_web():
     return redirect(url_for('events_view'))
 
 
+# --- Expense Web Routes ---
+
+@app.route('/expenses', methods=['GET'])
+def expenses_view():
+    if 'user_id' not in session:
+        flash('Please login to view expenses.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    expenses_list = expense_manager.get_all_expenses()
+    children = child_manager.get_user_children(user_id=user_id)
+    return render_template('expenses.html', expenses=expenses_list, children=children)
+
+
+@app.route('/expenses', methods=['POST'])
+def add_expense():
+    if 'user_id' not in session:
+        flash('Please login to add an expense.', 'warning')
+        return redirect(url_for('login'))
+
+    description = request.form.get('description')
+    amount_str = request.form.get('amount')
+    child_id_str = request.form.get('child_id')
+
+    if not description or not amount_str:
+        flash('Description and amount are required.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        flash('Invalid amount.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    child_id = int(child_id_str) if child_id_str and child_id_str.isdigit() else None
+
+    new_exp = expense_manager.add_expense(
+        description=description,
+        amount=amount,
+        paid_by_id=session['user_id'],
+        child_id=child_id
+    )
+    if new_exp:
+        flash('Expense added successfully!', 'success')
+    else:
+        flash('Failed to add expense.', 'danger')
+    return redirect(url_for('expenses_view'))
+
+
 # --- Child Web Routes ---
 
 @app.route('/children', methods=['GET'])
@@ -879,6 +927,87 @@ def api_delete_residency_period(period_id):
         db.rollback()
         print(f"Unexpected error deleting residency period: {e}")
         return jsonify(message="An unexpected error occurred."), 500
+    finally:
+        db.close()
+
+# ----- Residency change request endpoints -----
+
+@app.route('/residency-periods/<int:period_id>/propose-change', methods=['POST'])
+def api_propose_residency_change(period_id):
+    data = request.get_json()
+    if not data:
+        return jsonify(message="No change data provided"), 400
+
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        period.proposed_start_datetime = child_manager._parse_datetime_for_residency(data.get('start_datetime')) if data.get('start_datetime') else None
+        period.proposed_end_datetime = child_manager._parse_datetime_for_residency(data.get('end_datetime')) if data.get('end_datetime') else None
+        period.change_notes = data.get('notes')
+        period.approval_status = 'pending'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error proposing change: {e}")
+        return jsonify(message="Error proposing change"), 500
+    finally:
+        db.close()
+
+
+@app.route('/residency-periods/<int:period_id>/accept-change', methods=['POST'])
+def api_accept_residency_change(period_id):
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        if period.proposed_start_datetime:
+            period.start_datetime = period.proposed_start_datetime
+        if period.proposed_end_datetime:
+            period.end_datetime = period.proposed_end_datetime
+        if period.change_notes:
+            period.notes = period.change_notes
+
+        period.proposed_start_datetime = None
+        period.proposed_end_datetime = None
+        period.change_notes = None
+        period.approval_status = 'approved'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error accepting change: {e}")
+        return jsonify(message="Error accepting change"), 500
+    finally:
+        db.close()
+
+
+@app.route('/residency-periods/<int:period_id>/decline-change', methods=['POST'])
+def api_decline_residency_change(period_id):
+    db = SessionLocal()
+    try:
+        period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
+        if not period:
+            return jsonify(message="Residency period not found"), 404
+
+        period.proposed_start_datetime = None
+        period.proposed_end_datetime = None
+        period.change_notes = None
+        period.approval_status = 'declined'
+        db.commit()
+        db.refresh(period)
+        return jsonify(period.to_dict()), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error declining change: {e}")
+        return jsonify(message="Error declining change"), 500
     finally:
         db.close()
 
