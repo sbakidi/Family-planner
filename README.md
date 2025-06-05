@@ -1,7 +1,12 @@
 
 # Family-planner
 
+Family-planner
 Een eenvoudige planner voor ouders om diensten, evenementen en verblijfsperiodes van kinderen te beheren.
+
+## Installation
+
+Install the required Python packages before running the application or its tests:
 
 ## Installatie
 
@@ -35,9 +40,11 @@ viewed, updated and deleted via `/grocery-items` endpoints.
 
 Install the required packages using pip:
 
+
 ```bash
 pip install -r requirements.txt
 ```
+
 
 The application uses SQLite by default. Running the app will create a local database file if it does not exist.
 
@@ -107,4 +114,5 @@ npx expo start
 ```
 
 Use the Expo app or an emulator to view the login and calendar screens. The app expects the Flask API to be running locally at `http://localhost:5000`.
+
 
