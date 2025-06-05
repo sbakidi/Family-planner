@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Table, ForeignKey
+from sqlalchemy import Column, Integer, String, Table, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from src.database import Base
 
@@ -15,6 +15,8 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String) # Storing hashed password
+    prefers_sse = Column(Boolean, default=True)
+    prefers_email = Column(Boolean, default=False)
 
     # Relationship to Shifts (One-to-Many: User has many Shifts)
     shifts = relationship("Shift", back_populates="owner")
@@ -50,7 +52,9 @@ class User(Base):
         data = {
             "id": self.id,
             "name": self.name,
-            "email": self.email
+            "email": self.email,
+            "prefers_sse": self.prefers_sse,
+            "prefers_email": self.prefers_email
             # Exclude hashed_password for security
         }
         if include_shifts and self.shifts: # Check if self.shifts is not None

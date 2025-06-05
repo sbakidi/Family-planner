@@ -39,3 +39,10 @@ pytest
 ```
 
 This will execute the unit tests for the API and manager modules.
+
+## Notifications
+
+The application exposes a server-sent events endpoint at `/notifications/stream`.
+Authenticated web clients automatically subscribe and will receive JSON messages
+when shifts or events are created or updated. Mobile clients can listen to this
+endpoint to display real-time notifications.
