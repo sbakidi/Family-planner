@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from src.database import Base
-import datetime # For default values or type hints if needed
+from zoneinfo import ZoneInfo
+import datetime
 
 class Event(Base):
     __tablename__ = "events"
@@ -33,13 +34,15 @@ class Event(Base):
     def __repr__(self):
         return f"<Event(id={self.id}, title='{self.title}')>"
 
-    def to_dict(self, include_user=True, include_child=True):
+    def to_dict(self, include_user=True, include_child=True, timezone='UTC'):
+        local_start = self.start_time.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo(timezone)) if self.start_time else None
+        local_end = self.end_time.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo(timezone)) if self.end_time else None
         data = {
             "id": self.id,
             "title": self.title,
             "description": self.description,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "start_time": local_start.isoformat() if local_start else None,
+            "end_time": local_end.isoformat() if local_end else None,
             "user_id": self.user_id,
             "child_id": self.child_id
         }

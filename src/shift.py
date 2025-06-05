@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from src.database import Base
+from zoneinfo import ZoneInfo
 # Removed unused import: import datetime
 
 class Shift(Base):
@@ -21,12 +22,14 @@ class Shift(Base):
     def __repr__(self):
         return f"<Shift(id={self.id}, name='{self.name}', user_id={self.user_id}, source_pattern_id={self.source_pattern_id})>"
 
-    def to_dict(self, include_owner=True, include_source_pattern_details=False):
+    def to_dict(self, include_owner=True, include_source_pattern_details=False, timezone='UTC'):
+        local_start = self.start_time.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo(timezone)) if self.start_time else None
+        local_end = self.end_time.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo(timezone)) if self.end_time else None
         data = {
             "id": self.id,
             "name": self.name,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "start_time": local_start.isoformat() if local_start else None,
+            "end_time": local_end.isoformat() if local_end else None,
             "user_id": self.user_id,
             "source_pattern_id": self.source_pattern_id
         }

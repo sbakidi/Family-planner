@@ -15,6 +15,7 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String) # Storing hashed password
+    timezone = Column(String, default="UTC")
 
     # Relationship to Shifts (One-to-Many: User has many Shifts)
     shifts = relationship("Shift", back_populates="owner")
@@ -50,7 +51,8 @@ class User(Base):
         data = {
             "id": self.id,
             "name": self.name,
-            "email": self.email
+            "email": self.email,
+            "timezone": self.timezone
             # Exclude hashed_password for security
         }
         if include_shifts and self.shifts: # Check if self.shifts is not None
