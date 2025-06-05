@@ -10,6 +10,9 @@
             {% for event in events %}
                 <li>
                     <strong>{{ event.title }}</strong>
+                    {% if overbooked_ids and event.id in overbooked_ids %}
+                        <span class="overbook-warning">(Overbooking)</span>
+                    {% endif %}
                     <p>{{ event.description if event.description else 'No description.' }}</p>
                     <small>
                         From: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if event.start_time else 'N/A' }} <br>
