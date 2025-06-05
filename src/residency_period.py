@@ -11,6 +11,10 @@ class ResidencyPeriod(Base):
     start_datetime = Column(DateTime, nullable=False)
     end_datetime = Column(DateTime, nullable=False)
     notes = Column(String, nullable=True)
+    approval_status = Column(String, nullable=False, default="pending")
+    proposed_start_datetime = Column(DateTime, nullable=True)
+    proposed_end_datetime = Column(DateTime, nullable=True)
+    change_notes = Column(String, nullable=True)
 
     # Relationships
     child = relationship("Child", back_populates="residency_periods")
@@ -23,7 +27,11 @@ class ResidencyPeriod(Base):
             "parent_id": self.parent_id,
             "start_datetime": self.start_datetime.isoformat() if self.start_datetime else None,
             "end_datetime": self.end_datetime.isoformat() if self.end_datetime else None,
-            "notes": self.notes
+            "notes": self.notes,
+            "approval_status": self.approval_status,
+            "proposed_start_datetime": self.proposed_start_datetime.isoformat() if self.proposed_start_datetime else None,
+            "proposed_end_datetime": self.proposed_end_datetime.isoformat() if self.proposed_end_datetime else None,
+            "change_notes": self.change_notes
         }
         if include_child and self.child:
             data['child'] = {"id": self.child.id, "name": self.child.name}
@@ -32,4 +40,8 @@ class ResidencyPeriod(Base):
         return data
 
     def __repr__(self):
-        return f"<ResidencyPeriod(id={self.id}, child_id={self.child_id}, parent_id={self.parent_id}, start='{self.start_datetime}', end='{self.end_datetime}')>"
+        return (
+            f"<ResidencyPeriod(id={self.id}, child_id={self.child_id}, "
+            f"parent_id={self.parent_id}, start='{self.start_datetime}', "
+            f"end='{self.end_datetime}', status='{self.approval_status}')>"
+        )
