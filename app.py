@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, school_import # Managers and utilities
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -268,6 +268,22 @@ def api_delete_event(event_id):
     if event_manager.delete_event(event_id):
         return jsonify(message="Event deleted successfully"), 200 # Or 204
     return jsonify(message="Event not found or delete failed"), 404
+
+
+@app.route('/import-school-calendar', methods=['POST'])
+def api_import_school_calendar():
+    if 'file' not in request.files:
+        return jsonify(message='No file provided'), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify(message='No file provided'), 400
+
+    temp_path = os.path.join('/tmp', file.filename)
+    file.save(temp_path)
+    imported = school_import.import_school_calendar(temp_path)
+    os.remove(temp_path)
+
+    return jsonify(imported=len(imported)), 200
 
 
 # --- Shift Pattern API Endpoints ---

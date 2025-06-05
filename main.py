@@ -1,4 +1,4 @@
-from src import auth, shift_manager, child_manager, event_manager
+from src import auth, shift_manager, child_manager, event_manager, school_import
 
 current_user = None # Store User object or user_id
 
@@ -21,7 +21,8 @@ def display_main_menu():
         # Option 9 (View Child Events) might be too specific for this initial CLI,
         # but including for completeness based on example.
         print("9. View My Child Events (Specify Child ID)")
-        print("10. Logout")
+        print("10. Import School Calendar (.ics)")
+        print("11. Logout")
     print("0. Exit")
     return input("Choose an option: ")
 
@@ -194,6 +195,12 @@ def handle_view_my_child_events():
         print(f"ID: {event.event_id}, Title: {event.title}, Start: {event.start_time}, End: {event.end_time}, Desc: {event.description}")
 
 
+def handle_import_school_calendar():
+    path = input("Enter path to .ics file: ")
+    imported = school_import.import_school_calendar(path)
+    print(f"Imported {len(imported)} events from school calendar.")
+
+
 if __name__ == "__main__":
     # Initialize the database (create tables if they don't exist)
     # This should ideally be done once. For a CLI app, doing it at startup is okay.
@@ -239,7 +246,9 @@ if __name__ == "__main__":
             elif choice == '9':
                 handle_view_my_child_events()
             elif choice == '10':
-                auth.logout() # Assuming auth.logout() is defined and handles state
+                handle_import_school_calendar()
+            elif choice == '11':
+                auth.logout()  # Assuming auth.logout() is defined and handles state
                 current_user = None
                 print("Logged out successfully.")
             elif choice == '0':

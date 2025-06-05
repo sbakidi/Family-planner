@@ -22,7 +22,8 @@ def _parse_datetime(datetime_str: str):
         return None
 
 def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
-                 linked_user_id: int = None, linked_child_id: int = None):
+                 linked_user_id: int = None, linked_child_id: int = None,
+                 source: str = 'user'):
     db = SessionLocal()
     try:
         start_time_dt = _parse_datetime(start_time_str)
@@ -39,7 +40,8 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
             start_time=start_time_dt,
             end_time=end_time_dt,
             user_id=linked_user_id, # This is the FK field in Event model
-            child_id=linked_child_id # This is the FK field in Event model
+            child_id=linked_child_id, # This is the FK field in Event model
+            source=source
         )
         db.add(new_event)
         db.commit()
