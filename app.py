@@ -205,6 +205,15 @@ def api_create_event():
     if not data or not all(k in data for k in ("title", "start_time", "end_time")):
         return jsonify(message="Missing title, start_time, or end_time for event"), 400
 
+    conflict_info = event_manager.detect_conflicts(
+        start_time_str=data['start_time'],
+        end_time_str=data['end_time'],
+        user_id=data.get('user_id'),
+        child_id=data.get('child_id')
+    )
+    if conflict_info.get('conflicts'):
+        return jsonify({"message": "conflict", **conflict_info}), 409
+
     new_event_obj = event_manager.create_event(
         title=data['title'],
         description=data.get('description'),
@@ -598,21 +607,30 @@ def add_event_web():
         return redirect(url_for('events_view'))
 
 
-    # Events created via web are always linked to the current user.
-    # event_manager.create_event handles its own DB session.
+    conflict_info = event_manager.detect_conflicts(
+        start_time_str=start_time_formatted,
+        end_time_str=end_time_formatted,
+        user_id=user_id,
+        child_id=linked_child_id
+    )
+    if conflict_info.get('conflicts'):
+        flash('Conflict detected with existing schedule.', 'danger')
+        if conflict_info.get('suggested_start'):
+            flash(f"Suggested: {conflict_info['suggested_start']} - {conflict_info['suggested_end']}", 'info')
+        return redirect(url_for('events_view'))
+
     new_event = event_manager.create_event(
         title=title,
         description=description,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
-        linked_user_id=user_id, # Auto-link to current user
-        linked_child_id=linked_child_id if linked_child_id else None # Ensure None if 0 or empty
+        linked_user_id=user_id,
+        linked_child_id=linked_child_id if linked_child_id else None
     )
 
     if new_event:
         flash('Event added successfully!', 'success')
     else:
-        # event_manager.create_event prints detailed errors
         flash('Failed to add event. Please check your input or try again.', 'danger')
 
     return redirect(url_for('events_view'))
