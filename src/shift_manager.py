@@ -2,6 +2,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime # For string to datetime conversion
+import json
+
+from src.notification import send_notification
 
 from src.database import SessionLocal
 from src.shift import Shift
@@ -39,6 +42,10 @@ def add_shift(user_id: int, start_time_str: str, end_time_str: str, name: str):
         db.add(new_shift)
         db.commit()
         db.refresh(new_shift)
+        send_notification(user_id, {
+            "type": "shift_created",
+            "shift": new_shift.to_dict(include_owner=False)
+        })
         return new_shift
     except SQLAlchemyError as e:
         db.rollback()
@@ -89,6 +96,10 @@ def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str
         if updated:
             db.commit()
             db.refresh(shift)
+            send_notification(shift.user_id, {
+                "type": "shift_updated",
+                "shift": shift.to_dict(include_owner=False)
+            })
         return shift
     except SQLAlchemyError as e:
         db.rollback()

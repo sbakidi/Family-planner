@@ -1,9 +1,11 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event, expense # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager, expense_manager # Managers
+from src import auth, user, shift, child, event, grocery  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager  # Managers
+from src.notification import get_user_queue
+
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -12,7 +14,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event, expense
+    from src import user, shift, child, event, shift_swap, expense  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -389,6 +391,8 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
 
     start_date_str = data['start_date']
     end_date_str = data['end_date']
+    holidays = data.get('holidays')
+    exceptions = data.get('exceptions')
 
     db = SessionLocal()
     try:
@@ -397,7 +401,9 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
             pattern_id=pattern_id,
             user_id=user_id,
             start_date_str=start_date_str,
-            end_date_str=end_date_str
+            end_date_str=end_date_str,
+            holidays=holidays,
+            exceptions=exceptions
         )
         db.commit() # Commit here after successful generation
         return jsonify([s.to_dict(include_source_pattern_details=True) for s in created_shifts]), 201
@@ -415,6 +421,75 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
         return jsonify(message="An unexpected error occurred during shift generation."), 500
     finally:
         db.close()
+
+@app.route('/shift-swaps', methods=['POST', 'PUT'])
+def api_shift_swaps():
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data or not all(k in data for k in ('from_shift_id', 'to_shift_id')):
+            return jsonify(message="Missing from_shift_id or to_shift_id"), 400
+
+        swap = shift_swap_manager.propose_swap(data['from_shift_id'], data['to_shift_id'])
+        if swap:
+            return jsonify(swap.to_dict()), 201
+        return jsonify(message="Failed to create swap request"), 400
+
+    data = request.get_json()
+    if not data or 'request_id' not in data:
+        return jsonify(message="Missing request_id"), 400
+
+    if data.get('approve', True):
+        result = shift_swap_manager.approve_swap(data['request_id'])
+    else:
+        result = shift_swap_manager.reject_swap(data['request_id'])
+
+    if result:
+        return jsonify(result.to_dict()), 200
+    return jsonify(message="Swap request not found or already processed"), 404
+
+
+# --- Grocery Item Endpoints ---
+@app.route('/grocery-items', methods=['POST'])
+def api_add_grocery_item():
+    data = request.get_json() or {}
+    name = data.get('name')
+    if not name:
+        return jsonify(message="Missing item name"), 400
+    quantity = data.get('quantity')
+    user_id = data.get('user_id')
+    item = grocery_manager.add_item(name=name, quantity=quantity, user_id=user_id)
+    if item:
+        return jsonify(item.to_dict()), 201
+    return jsonify(message="Failed to create item"), 400
+
+
+@app.route('/grocery-items', methods=['GET'])
+def api_get_grocery_items():
+    user_id = request.args.get('user_id', type=int)
+    items = grocery_manager.get_items(user_id=user_id)
+    return jsonify([i.to_dict() for i in items]), 200
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['PUT'])
+def api_update_grocery_item(item_id):
+    data = request.get_json() or {}
+    item = grocery_manager.update_item(
+        item_id,
+        name=data.get('name'),
+        quantity=data.get('quantity'),
+        is_completed=data.get('is_completed')
+    )
+    if item:
+        return jsonify(item.to_dict()), 200
+    return jsonify(message="Item not found"), 404
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['DELETE'])
+def api_delete_grocery_item(item_id):
+    if grocery_manager.delete_item(item_id):
+        return jsonify(message="Item deleted"), 200
+    return jsonify(message="Item not found"), 404
+
 
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
@@ -485,6 +560,21 @@ def logout():
     session.pop('user_name', None)
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
+
+@app.route('/notifications/stream')
+def notifications_stream():
+    if 'user_id' not in session:
+        return "Unauthorized", 401
+
+    user_id = session['user_id']
+    q = get_user_queue(user_id)
+
+    def event_stream():
+        while True:
+            data = q.get()
+            yield f"data: {data}\n\n"
+
+    return Response(event_stream(), mimetype='text/event-stream')
 
 # --- Shift Web Routes ---
 
@@ -955,6 +1045,13 @@ def api_get_child_residency_on_date(child_id):
         return jsonify(message="An unexpected error occurred."), 500
     finally:
         db.close()
+
+# --- Google Calendar Endpoints ---
+
+@app.route('/users/<int:user_id>/calendar/sync', methods=['POST'])
+def api_sync_calendar(user_id):
+    events = calendar_sync.sync_user_calendar(user_id)
+    return jsonify(message="Calendar synced", events=len(events)), 200
 
 
 if __name__ == '__main__':

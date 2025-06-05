@@ -51,5 +51,13 @@
         {% endwith %}
         {% block content %}{% endblock %}
     </div>
+    {% if session.get('user_id') %}
+    <script>
+        const evt = new EventSource("{{ url_for('notifications_stream') }}");
+        evt.onmessage = (e) => {
+            alert("Notification: " + e.data);
+        };
+    </script>
+    {% endif %}
 </body>
 </html>
