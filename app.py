@@ -4,6 +4,8 @@ import os # For secret key
 
 from src import auth, user, shift, child, event # Models
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+# Plugin system
+from src.plugins import PluginManager
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -23,6 +25,7 @@ except Exception as e:
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Generate a random secret key for sessions
+plugin_manager = PluginManager(app)
 
 # Optional: A generic error handler for unhandled exceptions
 @app.errorhandler(Exception)
@@ -485,6 +488,20 @@ def logout():
     session.pop('user_name', None)
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
+
+# --- Plugin Management Web Route ---
+@app.route('/admin/plugins', methods=['GET', 'POST'])
+def manage_plugins():
+    if request.method == 'POST':
+        plugin_name = request.form.get('plugin')
+        action = request.form.get('action')
+        if action == 'enable':
+            plugin_manager.enable_plugin(plugin_name)
+        elif action == 'disable':
+            plugin_manager.disable_plugin(plugin_name)
+        return redirect(url_for('manage_plugins'))
+    plugins = plugin_manager.list_plugins()
+    return render_template('plugins.html', plugins=plugins)
 
 # --- Shift Web Routes ---
 
