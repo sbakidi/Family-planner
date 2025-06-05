@@ -1,4 +1,4 @@
-from src import auth, shift_manager, child_manager, event_manager, calendar_sync, expense_manager
+from src import auth, shift_manager, child_manager, event_manager, calendar_sync, expense_manager, school_import
 
 
 current_user = None # Store User object or user_id
@@ -25,7 +25,8 @@ def display_main_menu():
         print("10. Sync Google Calendar")
         print("11. Add Expense")
         print("12. View Expenses")
-        print("13. Logout")
+        print("13. Import School Calendar (.ics)")
+        print("14. Logout")
 
     print("0. Exit")
     return input("Choose an option: ")
@@ -242,6 +243,12 @@ def handle_sync_calendar():
 
 
 
+def handle_import_school_calendar():
+    path = input("Enter path to .ics file: ")
+    imported = school_import.import_school_calendar(path)
+    print(f"Imported {len(imported)} events from school calendar.")
+
+
 if __name__ == "__main__":
     # Initialize the database (create tables if they don't exist)
     # This should ideally be done once. For a CLI app, doing it at startup is okay.
@@ -293,6 +300,8 @@ if __name__ == "__main__":
             elif choice == '12':
                 handle_view_expenses()
             elif choice == '13':
+               handle_import_school_calendar()
+            elif choice == '14':
                 auth.logout() # Assuming auth.logout() is defined and handles state
 
                
