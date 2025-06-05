@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import hashlib # For direct user creation if needed, though auth API is preferred
+import sys
 from datetime import datetime, timedelta
 import sys
 
@@ -18,6 +19,7 @@ from src.database import initialize_database_for_application, create_tables, dro
 from src.user import User
 from src.shift import Shift
 from src.shift_pattern import ShiftPattern
+from src.shift_swap import ShiftSwap
 
 class TestAPIShifts(unittest.TestCase):
 
@@ -27,7 +29,7 @@ class TestAPIShifts(unittest.TestCase):
         app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
         app.config['SECRET_KEY'] = 'test_secret_key_shifts'
-        from src import user, shift, child, event, shift_pattern, residency_period # Ensure all models are known
+        from src import user, shift, child, event, shift_pattern, residency_period, shift_swap  # Ensure all models are known
         create_tables()
 
     @classmethod
@@ -47,6 +49,8 @@ class TestAPIShifts(unittest.TestCase):
 
         # Create a default user for many tests
         self.test_user = self._create_user_directly(name="Default User", email="default@example.com", password="password")
+        from src.token_manager import generate_token_for_user
+        self.token = generate_token_for_user(self.test_user.id)
 
     def tearDown(self):
         self.db.query(Shift).delete()
@@ -63,13 +67,16 @@ class TestAPIShifts(unittest.TestCase):
         self.db.refresh(user)
         return user
 
+    def _auth_headers(self):
+        return {"Authorization": f"Bearer {self.token}"}
+
     # --- Test Methods for Shift Patterns ---
     def test_create_global_shift_pattern_success(self):
-        response = self.client.post('/shift-patterns', json={
+        response = self.client.post('/api/v1/shift-patterns', json={
             "name": "Global Morning Pattern",
             "pattern_type": "Fixed",
             "definition": {"monday": {"name": "Morning", "start_time": "08:00", "end_time": "12:00"}}
-        })
+        }, headers=self._auth_headers())
         self.assertEqual(response.status_code, 201)
         data = response.get_json()
         self.assertEqual(data['name'], "Global Morning Pattern")
@@ -79,11 +86,11 @@ class TestAPIShifts(unittest.TestCase):
         self.assertEqual(pattern_in_db.name, "Global Morning Pattern")
 
     def test_create_user_shift_pattern_success(self):
-        response = self.client.post(f'/users/{self.test_user.id}/shift-patterns', json={
+        response = self.client.post(f'/api/v1/users/{self.test_user.id}/shift-patterns', json={
             "name": "User Specific Pattern",
             "pattern_type": "Rotating",
             "definition": {"cycle": [], "cycle_start_reference_date": "2024-01-01"}
-        })
+        }, headers=self._auth_headers())
         self.assertEqual(response.status_code, 201)
         data = response.get_json()
         self.assertEqual(data['name'], "User Specific Pattern")
@@ -96,13 +103,13 @@ class TestAPIShifts(unittest.TestCase):
         pattern = ShiftPattern(name="Test Get Pattern", pattern_type="Fixed", definition={}, user_id=self.test_user.id)
         self.db.add(pattern)
         self.db.commit()
-        response = self.client.get(f'/shift-patterns/{pattern.id}')
+        response = self.client.get(f'/api/v1/shift-patterns/{pattern.id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "Test Get Pattern")
 
     def test_get_shift_pattern_not_found(self):
-        response = self.client.get('/shift-patterns/99999')
+        response = self.client.get('/api/v1/shift-patterns/99999', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404)
 
     def test_get_global_shift_patterns(self):
@@ -111,7 +118,7 @@ class TestAPIShifts(unittest.TestCase):
         p2 = ShiftPattern(name="User 1", pattern_type="Fixed", definition={}, user_id=self.test_user.id)
         self.db.add_all([p1, p2])
         self.db.commit()
-        response = self.client.get('/shift-patterns')
+        response = self.client.get('/api/v1/shift-patterns', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 1)
@@ -122,7 +129,7 @@ class TestAPIShifts(unittest.TestCase):
         p2 = ShiftPattern(name="User Pattern B", pattern_type="Fixed", definition={}, user_id=self.test_user.id)
         self.db.add_all([p1, p2])
         self.db.commit()
-        response = self.client.get(f'/users/{self.test_user.id}/shift-patterns')
+        response = self.client.get(f'/api/v1/users/{self.test_user.id}/shift-patterns', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -131,7 +138,7 @@ class TestAPIShifts(unittest.TestCase):
         pattern = ShiftPattern(name="Old Name", pattern_type="Fixed", definition={}, user_id=self.test_user.id)
         self.db.add(pattern)
         self.db.commit()
-        response = self.client.put(f'/shift-patterns/{pattern.id}', json={"name": "New Name"})
+        response = self.client.put(f'/api/v1/shift-patterns/{pattern.id}', json={"name": "New Name"}, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "New Name")
@@ -143,17 +150,17 @@ class TestAPIShifts(unittest.TestCase):
         self.db.add(pattern)
         self.db.commit()
         pattern_id = pattern.id
-        response = self.client.delete(f'/shift-patterns/{pattern_id}')
+        response = self.client.delete(f'/api/v1/shift-patterns/{pattern_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(self.db.query(ShiftPattern).get(pattern_id))
 
     # --- Test Methods for Shifts ---
     def test_create_shift_success(self):
-        response = self.client.post(f'/users/{self.test_user.id}/shifts', json={
+        response = self.client.post(f'/api/v1/users/{self.test_user.id}/shifts', json={
             "name": "Morning Shift",
             "start_time": "2024-07-01 09:00",
             "end_time": "2024-07-01 17:00"
-        })
+        }, headers=self._auth_headers())
         self.assertEqual(response.status_code, 201)
         data = response.get_json()
         self.assertEqual(data['name'], "Morning Shift")
@@ -167,7 +174,7 @@ class TestAPIShifts(unittest.TestCase):
         s2 = Shift(name="Shift B", start_time=datetime(2024,1,2,9,0), end_time=datetime(2024,1,2,17,0), user_id=self.test_user.id)
         self.db.add_all([s1, s2])
         self.db.commit()
-        response = self.client.get(f'/users/{self.test_user.id}/shifts')
+        response = self.client.get(f'/api/v1/users/{self.test_user.id}/shifts', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -176,20 +183,20 @@ class TestAPIShifts(unittest.TestCase):
         shift = Shift(name="Detail Shift", start_time=datetime(2024,1,1,9,0), end_time=datetime(2024,1,1,17,0), user_id=self.test_user.id)
         self.db.add(shift)
         self.db.commit()
-        response = self.client.get(f'/shifts/{shift.id}')
+        response = self.client.get(f'/api/v1/shifts/{shift.id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "Detail Shift")
 
     def test_get_shift_details_not_found(self):
-        response = self.client.get('/shifts/99999')
+        response = self.client.get('/api/v1/shifts/99999', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404)
 
     def test_update_shift_success(self):
         shift = Shift(name="Old Shift Name", start_time=datetime(2024,1,1,9,0), end_time=datetime(2024,1,1,17,0), user_id=self.test_user.id)
         self.db.add(shift)
         self.db.commit()
-        response = self.client.put(f'/shifts/{shift.id}', json={"name": "New Shift Name"})
+        response = self.client.put(f'/api/v1/shifts/{shift.id}', json={"name": "New Shift Name"}, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['name'], "New Shift Name")
@@ -201,7 +208,7 @@ class TestAPIShifts(unittest.TestCase):
         self.db.add(shift)
         self.db.commit()
         shift_id = shift.id
-        response = self.client.delete(f'/shifts/{shift_id}')
+        response = self.client.delete(f'/api/v1/shifts/{shift_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200) # API returns 200
         self.assertIsNone(self.db.query(Shift).get(shift_id))
 
@@ -218,13 +225,14 @@ class TestAPIShifts(unittest.TestCase):
                 "cycle_start_reference_date": "2024-01-01" # A Monday
             }
         }
-        pattern_response = self.client.post(f'/users/{self.test_user.id}/shift-patterns', json=pattern_data)
+        pattern_response = self.client.post(f'/api/v1/users/{self.test_user.id}/shift-patterns', json=pattern_data, headers=self._auth_headers())
         self.assertEqual(pattern_response.status_code, 201)
         pattern_id = pattern_response.get_json()['id']
 
         generation_response = self.client.post(
-            f'/users/{self.test_user.id}/shift-patterns/{pattern_id}/generate-shifts',
-            json={"start_date": "2024-01-01", "end_date": "2024-01-03"} # Mon, Tue, Wed
+            f'/api/v1/users/{self.test_user.id}/shift-patterns/{pattern_id}/generate-shifts',
+            json={"start_date": "2024-01-01", "end_date": "2024-01-03"},
+            headers=self._auth_headers()
         )
         self.assertEqual(generation_response.status_code, 201)
         generated_shifts_data = generation_response.get_json()
@@ -237,6 +245,56 @@ class TestAPIShifts(unittest.TestCase):
 
         shifts_in_db = self.db.query(Shift).filter_by(user_id=self.test_user.id).all()
         self.assertEqual(len(shifts_in_db), 2)
+
+    def test_generate_shifts_with_holiday(self):
+        pattern_data = {
+            "name": "Holiday Pattern",
+            "pattern_type": "Rotating",
+            "definition": {
+                "cycle": [
+                    {"name": "Work", "days": 2, "start_time": "09:00", "end_time": "17:00"},
+                    {"name": "Off", "days": 1}
+                ],
+                "cycle_start_reference_date": "2024-01-01"
+            }
+        }
+        resp = self.client.post(f'/users/{self.test_user.id}/shift-patterns', json=pattern_data)
+        self.assertEqual(resp.status_code, 201)
+        pattern_id = resp.get_json()['id']
+
+        gen_resp = self.client.post(
+            f'/users/{self.test_user.id}/shift-patterns/{pattern_id}/generate-shifts',
+            json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-03",
+                "holidays": ["2024-01-02"]
+            }
+        )
+        self.assertEqual(gen_resp.status_code, 201)
+        data = gen_resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['start_time'][:10], "2024-01-01")
+
+    def test_shift_swap_workflow(self):
+        user2 = self._create_user_directly(name="SwapUser", email="swap@example.com", password="pass")
+        shift1 = Shift(name="U1", start_time=datetime(2024,1,1,9,0), end_time=datetime(2024,1,1,17,0), user_id=self.test_user.id)
+        shift2 = Shift(name="U2", start_time=datetime(2024,1,2,9,0), end_time=datetime(2024,1,2,17,0), user_id=user2.id)
+        self.db.add_all([shift1, shift2])
+        self.db.commit()
+        self.db.refresh(shift1)
+        self.db.refresh(shift2)
+
+        create_resp = self.client.post('/shift-swaps', json={"from_shift_id": shift1.id, "to_shift_id": shift2.id})
+        self.assertEqual(create_resp.status_code, 201)
+        req_id = create_resp.get_json()['id']
+
+        approve_resp = self.client.put('/shift-swaps', json={"request_id": req_id, "approve": True})
+        self.assertEqual(approve_resp.status_code, 200)
+
+        self.db.refresh(shift1)
+        self.db.refresh(shift2)
+        self.assertEqual(shift1.user_id, user2.id)
+        self.assertEqual(shift2.user_id, self.test_user.id)
 
 
 if __name__ == '__main__':

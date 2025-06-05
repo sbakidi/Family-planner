@@ -9,7 +9,7 @@ from src.user import User  # SQLAlchemy User model
 
 # users_db is removed, data will be stored in SQLite via SQLAlchemy
 
-def register(name, email, password):
+def register(name, email, password, role='parent'):
     db = SessionLocal()
     try:
         # Check if user already exists
@@ -22,7 +22,7 @@ def register(name, email, password):
 
         # Note: User.id is an auto-incrementing Integer PK.
         # The previous user_id (uuid) is not directly used here unless the model changes.
-        new_user = User(name=name, email=email, hashed_password=hashed_password)
+        new_user = User(name=name, email=email, hashed_password=hashed_password, role=role)
 
         db.add(new_user)
         db.commit()
@@ -106,3 +106,15 @@ def logout():
     # For this app, current_user is set to None in main.py.
     print("User logged out (client-side state cleared).")
     pass
+
+def user_has_role(user_or_id, required_role: str) -> bool:
+    """Check if the given user (object or id) has the required role."""
+    db = SessionLocal()
+    try:
+        if isinstance(user_or_id, User):
+            user_obj = user_or_id
+        else:
+            user_obj = db.query(User).filter(User.id == user_or_id).first()
+        return bool(user_obj and user_obj.role == required_role)
+    finally:
+        db.close()
