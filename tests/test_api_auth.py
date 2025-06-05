@@ -126,6 +126,15 @@ class TestAuthAPI(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data['message'], "Login failed: Invalid email or password.")
 
+    def test_otp_endpoints(self):
+        reg_response = self._register_user_api(email="otp_api@example.com")
+        user_id = reg_response.get_json()['user_id']
+        gen_resp = self.client.post('/auth/otp/generate', json={"user_id": user_id})
+        self.assertEqual(gen_resp.status_code, 200)
+        otp = gen_resp.get_json()['otp']
+        verify_resp = self.client.post('/auth/otp/verify', json={"user_id": user_id, "otp": otp})
+        self.assertEqual(verify_resp.status_code, 200)
+
     def test_login_user_not_found(self):
         response = self.client.post('/api/v1/auth/login', json={
             "email": "nosuchuser@example.com",

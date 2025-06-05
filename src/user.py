@@ -15,10 +15,12 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String) # Storing hashed password
+    two_factor_secret = Column(String, nullable=True)
     role = Column(String, nullable=False, default='parent')  # New role field
     prefers_sse = Column(Boolean, default=True)
     prefers_email = Column(Boolean, default=False)
     calendar_token = Column(String, nullable=True)  # OAuth token for Google Calendar
+
 
 
 

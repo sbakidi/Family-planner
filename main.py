@@ -49,7 +49,8 @@ def handle_login():
     global current_user
     email = input("Enter email: ")
     password = input("Enter password: ")
-    user = auth.login(email, password)
+    otp = input("Enter OTP (leave blank if not enabled): ") or None
+    user = auth.login(email, password, otp)
     if user:
         current_user = user # Store the User object
         print(f"User '{user.name}' logged in successfully.")
