@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event, institution, consent, treatment_plan  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager  # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -12,7 +12,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, institution, consent, treatment_plan  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -247,6 +247,7 @@ def api_update_event(event_id):
     # Handle explicit unlinking if 'user_id': null or 'child_id': null is passed
     unlink_user = 'user_id' in data and data['user_id'] is None
     unlink_child = 'child_id' in data and data['child_id'] is None
+    unlink_institution = 'institution_id' in data and data['institution_id'] is None
 
     updated_event_obj = event_manager.update_event(
         event_id=event_id,
@@ -256,8 +257,10 @@ def api_update_event(event_id):
         end_time_str=data.get('end_time'),
         linked_user_id=data.get('user_id') if not unlink_user else None,
         linked_child_id=data.get('child_id') if not unlink_child else None,
+        institution_id=data.get('institution_id') if not unlink_institution else None,
         unlink_user=unlink_user,
-        unlink_child=unlink_child
+        unlink_child=unlink_child,
+        unlink_institution=unlink_institution
     )
     if updated_event_obj:
         return jsonify(updated_event_obj.to_dict()), 200
@@ -268,6 +271,126 @@ def api_delete_event(event_id):
     if event_manager.delete_event(event_id):
         return jsonify(message="Event deleted successfully"), 200 # Or 204
     return jsonify(message="Event not found or delete failed"), 404
+
+
+# --- Institution and Consent API Endpoints ---
+
+@app.route('/institutions', methods=['POST'])
+def api_create_institution():
+    data = request.get_json()
+    if not data or 'name' not in data:
+        return jsonify(message="Missing institution name"), 400
+    api_key = os.urandom(16).hex()
+    new_inst = institution.Institution(name=data['name'], type=data.get('type'), api_key=api_key)
+    db = SessionLocal()
+    try:
+        db.add(new_inst)
+        db.commit()
+        db.refresh(new_inst)
+        return jsonify({"id": new_inst.id, "api_key": new_inst.api_key}), 201
+    finally:
+        db.close()
+
+
+def _verify_institution_api_key(inst_id, provided_key):
+    db = SessionLocal()
+    inst = db.query(institution.Institution).filter_by(id=inst_id).first()
+    db.close()
+    if not inst or inst.api_key != provided_key:
+        return None
+    return inst
+
+
+@app.route('/institutions/<int:institution_id>/events', methods=['POST'])
+def api_institution_push_event(institution_id):
+    key = request.headers.get('X-API-Key')
+    inst = _verify_institution_api_key(institution_id, key)
+    if not inst:
+        return jsonify(message="Unauthorized"), 401
+
+    data = request.get_json()
+    if not data or not all(k in data for k in ("title", "start_time", "end_time")):
+        return jsonify(message="Missing title, start_time, or end_time"), 400
+
+    child_id = data.get('child_id')
+    if child_id:
+        db = SessionLocal()
+        consent_record = db.query(consent.Consent).filter_by(child_id=child_id, institution_id=institution_id, approved=True).first()
+        db.close()
+        if not consent_record:
+            return jsonify(message="No consent for child"), 403
+
+    new_event = event_manager.create_event(
+        title=data['title'],
+        description=data.get('description'),
+        start_time_str=data['start_time'],
+        end_time_str=data['end_time'],
+        linked_child_id=child_id,
+        institution_id=institution_id
+    )
+    if new_event:
+        return jsonify(new_event.to_dict()), 201
+    return jsonify(message="Failed to create event"), 400
+
+
+@app.route('/institutions/<int:institution_id>/treatment-plans', methods=['POST'])
+def api_institution_push_treatment(institution_id):
+    key = request.headers.get('X-API-Key')
+    inst = _verify_institution_api_key(institution_id, key)
+    if not inst:
+        return jsonify(message="Unauthorized"), 401
+
+    data = request.get_json()
+    if not data or 'child_id' not in data or 'description' not in data:
+        return jsonify(message="Missing child_id or description"), 400
+    child_id = data['child_id']
+    db = SessionLocal()
+    consent_record = db.query(consent.Consent).filter_by(child_id=child_id, institution_id=institution_id, approved=True).first()
+    if not consent_record:
+        db.close()
+        return jsonify(message="No consent for child"), 403
+
+    plan = treatment_plan.TreatmentPlan(
+        child_id=child_id,
+        institution_id=institution_id,
+        description=data['description'],
+        start_date=data.get('start_date'),
+        end_date=data.get('end_date')
+    )
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    db.close()
+    return jsonify(plan.to_dict()), 201
+
+
+@app.route('/children/<int:child_id>/institutions/<int:institution_id>/consent', methods=['POST'])
+def api_grant_consent(child_id, institution_id):
+    db = SessionLocal()
+    record = db.query(consent.Consent).filter_by(child_id=child_id, institution_id=institution_id).first()
+    if record:
+        record.approved = True
+    else:
+        record = consent.Consent(child_id=child_id, institution_id=institution_id, approved=True)
+        db.add(record)
+    db.commit()
+    db.refresh(record)
+    db.close()
+    return jsonify(record.to_dict()), 201
+
+
+@app.route('/children/<int:child_id>/institutions/<int:institution_id>/consent', methods=['DELETE'])
+def api_revoke_consent(child_id, institution_id):
+    db = SessionLocal()
+    record = db.query(consent.Consent).filter_by(child_id=child_id, institution_id=institution_id).first()
+    if record:
+        record.approved = False
+        db.commit()
+        db.refresh(record)
+        db.close()
+        return jsonify(message="Consent revoked"), 200
+    db.close()
+    return jsonify(message="Consent not found"), 404
 
 
 # --- Shift Pattern API Endpoints ---

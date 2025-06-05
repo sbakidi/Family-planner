@@ -22,7 +22,8 @@ def _parse_datetime(datetime_str: str):
         return None
 
 def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
-                 linked_user_id: int = None, linked_child_id: int = None):
+                 linked_user_id: int = None, linked_child_id: int = None,
+                 institution_id: int = None):
     db = SessionLocal()
     try:
         start_time_dt = _parse_datetime(start_time_str)
@@ -39,7 +40,8 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
             start_time=start_time_dt,
             end_time=end_time_dt,
             user_id=linked_user_id, # This is the FK field in Event model
-            child_id=linked_child_id # This is the FK field in Event model
+            child_id=linked_child_id, # This is the FK field in Event model
+            institution_id=institution_id
         )
         db.add(new_event)
         db.commit()
@@ -87,10 +89,23 @@ def get_events_for_child(child_id: int):
     finally:
         db.close()
 
+def get_events_for_institution(institution_id: int):
+    db = SessionLocal()
+    try:
+        events = db.query(Event).filter(Event.institution_id == institution_id).all()
+        return events
+    except SQLAlchemyError as e:
+        print(f"Database error getting events for institution: {e}")
+        return []
+    finally:
+        db.close()
+
 def update_event(event_id: int, title: str = None, description: str = None,
                  start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
-                 unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
+                 institution_id: int = None,
+                 unlink_user: bool = False, unlink_child: bool = False,
+                 unlink_institution: bool = False):
     db = SessionLocal()
     try:
         event = db.query(Event).filter(Event.id == event_id).first()
@@ -132,6 +147,13 @@ def update_event(event_id: int, title: str = None, description: str = None,
             updated = True
         elif linked_child_id is not None:
             event.child_id = linked_child_id
+            updated = True
+
+        if unlink_institution:
+            event.institution_id = None
+            updated = True
+        elif institution_id is not None:
+            event.institution_id = institution_id
             updated = True
 
         if updated:
