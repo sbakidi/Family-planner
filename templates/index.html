@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+    <h2>Welcome to the Family Planner!</h2>
+    <p>This application helps you manage your family's schedule, shifts, and events.</p>
+    {% if session.get('user_id') %}
+        <p>You are logged in. You can now manage your data or <a href="{{ url_for('logout') }}">logout</a>.</p>
+    {% else %}
+        <p>Please <a href="{{ url_for('login') }}">login</a> or <a href="{{ url_for('register') }}">register</a> to continue.</p>
+    {% endif %}
+{% endblock %}
