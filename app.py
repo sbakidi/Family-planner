@@ -2,9 +2,10 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import auth, user, shift, child, event, grocery  # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync  # Managers
 from src.notification import get_user_queue
+
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -416,6 +417,49 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
         return jsonify(message="An unexpected error occurred during shift generation."), 500
     finally:
         db.close()
+
+
+# --- Grocery Item Endpoints ---
+@app.route('/grocery-items', methods=['POST'])
+def api_add_grocery_item():
+    data = request.get_json() or {}
+    name = data.get('name')
+    if not name:
+        return jsonify(message="Missing item name"), 400
+    quantity = data.get('quantity')
+    user_id = data.get('user_id')
+    item = grocery_manager.add_item(name=name, quantity=quantity, user_id=user_id)
+    if item:
+        return jsonify(item.to_dict()), 201
+    return jsonify(message="Failed to create item"), 400
+
+
+@app.route('/grocery-items', methods=['GET'])
+def api_get_grocery_items():
+    user_id = request.args.get('user_id', type=int)
+    items = grocery_manager.get_items(user_id=user_id)
+    return jsonify([i.to_dict() for i in items]), 200
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['PUT'])
+def api_update_grocery_item(item_id):
+    data = request.get_json() or {}
+    item = grocery_manager.update_item(
+        item_id,
+        name=data.get('name'),
+        quantity=data.get('quantity'),
+        is_completed=data.get('is_completed')
+    )
+    if item:
+        return jsonify(item.to_dict()), 200
+    return jsonify(message="Item not found"), 404
+
+
+@app.route('/grocery-items/<int:item_id>', methods=['DELETE'])
+def api_delete_grocery_item(item_id):
+    if grocery_manager.delete_item(item_id):
+        return jsonify(message="Item deleted"), 200
+    return jsonify(message="Item not found"), 404
 
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
@@ -841,6 +885,13 @@ def api_get_child_residency_on_date(child_id):
         return jsonify(message="An unexpected error occurred."), 500
     finally:
         db.close()
+
+# --- Google Calendar Endpoints ---
+
+@app.route('/users/<int:user_id>/calendar/sync', methods=['POST'])
+def api_sync_calendar(user_id):
+    events = calendar_sync.sync_user_calendar(user_id)
+    return jsonify(message="Calendar synced", events=len(events)), 200
 
 
 if __name__ == '__main__':

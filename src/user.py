@@ -17,6 +17,8 @@ class User(Base):
     hashed_password = Column(String) # Storing hashed password
     prefers_sse = Column(Boolean, default=True)
     prefers_email = Column(Boolean, default=False)
+    calendar_token = Column(String, nullable=True)  # OAuth token for Google Calendar
+
 
     # Relationship to Shifts (One-to-Many: User has many Shifts)
     shifts = relationship("Shift", back_populates="owner")
