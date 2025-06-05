@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+
+{% block title %}My Tasks{% endblock %}
+
+{% block content %}
+    <h2>My Tasks</h2>
+
+    {% if tasks %}
+        <ul>
+            {% for task in tasks %}
+                <li>
+                    <input type="checkbox" disabled {% if task.completed %}checked{% endif %}> {{ task.description }}
+                    {% if task.due_date %}
+                        <small>Due: {{ task.due_date.strftime('%Y-%m-%d %H:%M') }}</small>
+                    {% endif %}
+                    {% if task.event_id %}
+                        <br><small>Event ID {{ task.event_id }}{% if task.event %} ({{ task.event.title }}){% endif %}</small>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>You have no tasks.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Add New Task</h3>
+    <form method="POST" action="{{ url_for('add_task_web') }}">
+        <div>
+            <label for="description">Task Description:</label>
+            <input type="text" id="description" name="description" required>
+        </div>
+        <div>
+            <label for="due_date">Due Date (optional):</label>
+            <input type="datetime-local" id="due_date" name="due_date">
+        </div>
+        <div>
+            <label for="event_id">Link to Event (Optional):</label>
+            <select id="event_id" name="event_id">
+                <option value="">-- None --</option>
+                {% for event in events %}
+                    <option value="{{ event.id }}">{{ event.title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <input type="submit" value="Add Task">
+        </div>
+    </form>
+{% endblock %}
