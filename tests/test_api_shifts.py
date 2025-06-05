@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import hashlib # For direct user creation if needed, though auth API is preferred
+import sys
 from datetime import datetime, timedelta
 import sys
 
@@ -18,6 +19,7 @@ from src.database import initialize_database_for_application, create_tables, dro
 from src.user import User
 from src.shift import Shift
 from src.shift_pattern import ShiftPattern
+from src.shift_swap import ShiftSwap
 
 class TestAPIShifts(unittest.TestCase):
 
@@ -27,7 +29,7 @@ class TestAPIShifts(unittest.TestCase):
         app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
         app.config['SECRET_KEY'] = 'test_secret_key_shifts'
-        from src import user, shift, child, event, shift_pattern, residency_period # Ensure all models are known
+        from src import user, shift, child, event, shift_pattern, residency_period, shift_swap  # Ensure all models are known
         create_tables()
 
     @classmethod
@@ -237,6 +239,56 @@ class TestAPIShifts(unittest.TestCase):
 
         shifts_in_db = self.db.query(Shift).filter_by(user_id=self.test_user.id).all()
         self.assertEqual(len(shifts_in_db), 2)
+
+    def test_generate_shifts_with_holiday(self):
+        pattern_data = {
+            "name": "Holiday Pattern",
+            "pattern_type": "Rotating",
+            "definition": {
+                "cycle": [
+                    {"name": "Work", "days": 2, "start_time": "09:00", "end_time": "17:00"},
+                    {"name": "Off", "days": 1}
+                ],
+                "cycle_start_reference_date": "2024-01-01"
+            }
+        }
+        resp = self.client.post(f'/users/{self.test_user.id}/shift-patterns', json=pattern_data)
+        self.assertEqual(resp.status_code, 201)
+        pattern_id = resp.get_json()['id']
+
+        gen_resp = self.client.post(
+            f'/users/{self.test_user.id}/shift-patterns/{pattern_id}/generate-shifts',
+            json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-03",
+                "holidays": ["2024-01-02"]
+            }
+        )
+        self.assertEqual(gen_resp.status_code, 201)
+        data = gen_resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['start_time'][:10], "2024-01-01")
+
+    def test_shift_swap_workflow(self):
+        user2 = self._create_user_directly(name="SwapUser", email="swap@example.com", password="pass")
+        shift1 = Shift(name="U1", start_time=datetime(2024,1,1,9,0), end_time=datetime(2024,1,1,17,0), user_id=self.test_user.id)
+        shift2 = Shift(name="U2", start_time=datetime(2024,1,2,9,0), end_time=datetime(2024,1,2,17,0), user_id=user2.id)
+        self.db.add_all([shift1, shift2])
+        self.db.commit()
+        self.db.refresh(shift1)
+        self.db.refresh(shift2)
+
+        create_resp = self.client.post('/shift-swaps', json={"from_shift_id": shift1.id, "to_shift_id": shift2.id})
+        self.assertEqual(create_resp.status_code, 201)
+        req_id = create_resp.get_json()['id']
+
+        approve_resp = self.client.put('/shift-swaps', json={"request_id": req_id, "approve": True})
+        self.assertEqual(approve_resp.status_code, 200)
+
+        self.db.refresh(shift1)
+        self.db.refresh(shift2)
+        self.assertEqual(shift1.user_id, user2.id)
+        self.assertEqual(shift2.user_id, self.test_user.id)
 
 
 if __name__ == '__main__':

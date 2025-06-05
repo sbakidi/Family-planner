@@ -31,6 +31,7 @@
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
                 {% if session.get('user_id') %}
+                    <li><a href="{{ url_for('expenses_view') }}">Expenses</a></li>
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
                     {# Add other authenticated links here, e.g., Profile, Dashboard #}
                     <li><a href="{{ url_for('analytics_view') }}">Analytics</a></li>
@@ -51,5 +52,13 @@
         {% endwith %}
         {% block content %}{% endblock %}
     </div>
+    {% if session.get('user_id') %}
+    <script>
+        const evt = new EventSource("{{ url_for('notifications_stream') }}");
+        evt.onmessage = (e) => {
+            alert("Notification: " + e.data);
+        };
+    </script>
+    {% endif %}
 </body>
 </html>

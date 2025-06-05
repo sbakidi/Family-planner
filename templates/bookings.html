@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+
+{% block title %}My Bookings{% endblock %}
+
+{% block content %}
+    <h2>My Bookings</h2>
+
+    {% if bookings %}
+        <ul>
+            {% for booking in bookings %}
+                <li>
+                    <strong>{{ booking.service }}</strong>:
+                    From {{ booking.start_time.strftime('%Y-%m-%d %H:%M') if booking.start_time else 'N/A' }}
+                    to {{ booking.end_time.strftime('%Y-%m-%d %H:%M') if booking.end_time else 'N/A' }}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>You have no bookings.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Add New Booking</h3>
+    <form method="POST" action="{{ url_for('add_booking_web') }}">
+        <div>
+            <label for="service">Service:</label>
+            <input type="text" id="service" name="service" required>
+        </div>
+        <div>
+            <label for="start_time">Start Time:</label>
+            <input type="datetime-local" id="start_time" name="start_time" required>
+        </div>
+        <div>
+            <label for="end_time">End Time:</label>
+            <input type="datetime-local" id="end_time" name="end_time" required>
+        </div>
+        <div>
+            <input type="submit" value="Add Booking">
+        </div>
+    </form>
+{% endblock %}
