@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
 from src import auth, user, shift, child, event # Models
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, shift_swap_manager  # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
 from src import residency_period
@@ -12,7 +12,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, shift_swap  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -389,6 +389,8 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
 
     start_date_str = data['start_date']
     end_date_str = data['end_date']
+    holidays = data.get('holidays')
+    exceptions = data.get('exceptions')
 
     db = SessionLocal()
     try:
@@ -397,7 +399,9 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
             pattern_id=pattern_id,
             user_id=user_id,
             start_date_str=start_date_str,
-            end_date_str=end_date_str
+            end_date_str=end_date_str,
+            holidays=holidays,
+            exceptions=exceptions
         )
         db.commit() # Commit here after successful generation
         return jsonify([s.to_dict(include_source_pattern_details=True) for s in created_shifts]), 201
@@ -415,6 +419,31 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
         return jsonify(message="An unexpected error occurred during shift generation."), 500
     finally:
         db.close()
+
+@app.route('/shift-swaps', methods=['POST', 'PUT'])
+def api_shift_swaps():
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data or not all(k in data for k in ('from_shift_id', 'to_shift_id')):
+            return jsonify(message="Missing from_shift_id or to_shift_id"), 400
+
+        swap = shift_swap_manager.propose_swap(data['from_shift_id'], data['to_shift_id'])
+        if swap:
+            return jsonify(swap.to_dict()), 201
+        return jsonify(message="Failed to create swap request"), 400
+
+    data = request.get_json()
+    if not data or 'request_id' not in data:
+        return jsonify(message="Missing request_id"), 400
+
+    if data.get('approve', True):
+        result = shift_swap_manager.approve_swap(data['request_id'])
+    else:
+        result = shift_swap_manager.reject_swap(data['request_id'])
+
+    if result:
+        return jsonify(result.to_dict()), 200
+    return jsonify(message="Swap request not found or already processed"), 404
 
 # --- ResidencyPeriod API Endpoints ---
 # (This section should remain as is, the new web routes for shifts will be added before/after this block,
