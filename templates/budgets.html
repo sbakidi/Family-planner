@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+
+{% block title %}Expense Categories{% endblock %}
+
+{% block content %}
+    <h2>Expense Categories</h2>
+
+    {% if categories %}
+        <ul>
+        {% for cat in categories %}
+            <li>{{ cat.name }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No categories added yet.</p>
+    {% endif %}
+
+    <hr>
+    <h3>Add Category</h3>
+    <form method="POST" action="{{ url_for('add_category') }}">
+        <label for="name">Category Name:</label>
+        <input type="text" id="name" name="name" required>
+        <input type="submit" value="Add Category">
+    </form>
+{% endblock %}

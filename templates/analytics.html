@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+    <h2>Monthly Summary</h2>
+
+    <form method="GET" action="{{ url_for('analytics_dashboard') }}">
+        <label for="month">Month:</label>
+        <input type="month" id="month" name="month" value="{{ selected_month }}">
+        <input type="submit" value="Show">
+    </form>
+
+    {% if summary %}
+        <ul>
+        {% for name, total in summary.items() %}
+            <li>{{ name }}: ${{ '%.2f'|format(total) }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No expenses for this month.</p>
+    {% endif %}
+{% endblock %}

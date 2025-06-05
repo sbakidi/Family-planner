@@ -32,7 +32,9 @@
                 <li><a href="{{ url_for('index') }}">Home</a></li>
                 {% if session.get('user_id') %}
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
-                    {# Add other authenticated links here, e.g., Profile, Dashboard #}
+                    <li><a href="{{ url_for('budgets_view') }}">Categories</a></li>
+                    <li><a href="{{ url_for('expenses_view') }}">Expenses</a></li>
+                    <li><a href="{{ url_for('analytics_dashboard') }}">Analytics</a></li>
                 {% else %}
                     <li><a href="{{ url_for('login') }}">Login</a></li>
                     <li><a href="{{ url_for('register') }}">Register</a></li>
