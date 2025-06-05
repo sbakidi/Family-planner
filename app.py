@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, send_from_directory
 from sqlalchemy.exc import SQLAlchemyError
-import os # For secret key
+import os  # For secret key
+from werkzeug.utils import secure_filename
 
-from src import auth, user, shift, child, event # Models
+from src import auth, user, shift, child, event, document  # Models
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager # Managers
 from src.database import init_db, SessionLocal
 # Import residency_period model for init_db
@@ -12,7 +13,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event # Models
+    from src import user, shift, child, event, document  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -23,6 +24,9 @@ except Exception as e:
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Generate a random secret key for sessions
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Optional: A generic error handler for unhandled exceptions
 @app.errorhandler(Exception)
@@ -665,6 +669,55 @@ def add_child_web():
         flash('Failed to add child. Please check your input or try again.', 'danger')
 
     return redirect(url_for('children_view'))
+
+
+# --- Document Web Routes ---
+
+@app.route('/documents', methods=['GET', 'POST'])
+def documents_view():
+    if 'user_id' not in session:
+        flash('Please login to manage documents.', 'warning')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+
+    if request.method == 'POST':
+        uploaded = request.files.get('file')
+        child_id_str = request.form.get('child_id')
+        child_id = int(child_id_str) if child_id_str and child_id_str.isdigit() else None
+
+        if not uploaded or uploaded.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(url_for('documents_view'))
+
+        filename = secure_filename(uploaded.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        uploaded.save(file_path)
+
+        db = SessionLocal()
+        try:
+            doc_record = document.Document(filename=filename, user_id=user_id, child_id=child_id)
+            db.add(doc_record)
+            db.commit()
+            flash('File uploaded successfully.', 'success')
+        except Exception as e:
+            db.rollback()
+            flash('Failed to save document.', 'danger')
+            print(f'Error saving document: {e}')
+        finally:
+            db.close()
+        return redirect(url_for('documents_view'))
+
+    db = SessionLocal()
+    docs = db.query(document.Document).filter(document.Document.user_id == user_id).all()
+    db.close()
+    user_children = child_manager.get_user_children(user_id=user_id)
+    return render_template('documents.html', documents=docs, children=user_children)
+
+
+@app.route('/uploads/<path:filename>')
+def download_document(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 
 # The previous residency period POST route:
