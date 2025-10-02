@@ -9,6 +9,9 @@ from src import shift_manager, child_manager, event_manager, shift_pattern_manag
 from src.notification import get_user_queue
 
 from src import auth, user, shift, child, event # Models
+
+# Plugin system
+from src.plugins import PluginManager
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager
 from src import ai_scheduler  # Simple scheduling heuristics
 from src.database import init_db, SessionLocal
@@ -32,6 +35,7 @@ except Exception as e:
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Generate a random secret key for sessions
+plugin_manager = PluginManager(app)
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -867,6 +871,19 @@ def logout():
     flash('You have been successfully logged out.', 'success')
     return redirect(url_for('index'))
 
+# --- Plugin Management Web Route ---
+@app.route('/admin/plugins', methods=['GET', 'POST'])
+def manage_plugins():
+    if request.method == 'POST':
+        plugin_name = request.form.get('plugin')
+        action = request.form.get('action')
+        if action == 'enable':
+            plugin_manager.enable_plugin(plugin_name)
+        elif action == 'disable':
+            plugin_manager.disable_plugin(plugin_name)
+        return redirect(url_for('manage_plugins'))
+    plugins = plugin_manager.list_plugins()
+    return render_template('plugins.html', plugins=plugins)
 @app.route('/notifications/stream')
 def notifications_stream():
     if 'user_id' not in session:

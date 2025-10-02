@@ -110,6 +110,34 @@ pytest
 
 This will execute the unit tests for the API and manager modules.
 
+## Plugins
+
+The application supports simple plugins located in `src/plugins/`. Each plugin
+is a Python module that defines a `Plugin` class with a `name` attribute and a
+`register(app)` method. Optional cleanup can be provided with an
+`unregister(app)` method.
+
+Place your plugin file in `src/plugins/` and restart the application. Visit
+`/admin/plugins` in the web interface to enable or disable discovered plugins.
+
+### Example Plugin
+
+```python
+# src/plugins/sample.py
+from flask import Blueprint
+
+bp = Blueprint("sample", __name__)
+
+@bp.route("/sample")
+def hello():
+    return "Hello from sample plugin"
+
+class Plugin:
+    name = "Sample"
+
+    def register(self, app):
+        app.register_blueprint(bp)
+```
 
 ## Notifications
 

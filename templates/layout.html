@@ -32,6 +32,7 @@
         <nav>
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('manage_plugins') }}">Plugins</a></li>
                 {% if session.get('user_id') %}
                     <li><a href="{{ url_for('documents_view') }}">Documents</a></li>
                     {% if session.get('role') == 'parent' %}
