@@ -85,6 +85,21 @@ class TestAuth(unittest.TestCase):
         logged_in_user = auth.login("test@example.com", "wrongpassword")
         self.assertIsNone(logged_in_user)
 
+    def test_generate_and_verify_otp(self):
+        user = auth.register("OTP User", "otp@example.com", "password123")
+        otp = auth.generate_otp(user.id)
+        self.assertIsNotNone(otp)
+        self.assertTrue(auth.verify_otp(user.id, otp))
+
+    def test_login_with_otp(self):
+        user = auth.register("OTP User2", "otp2@example.com", "password123")
+        otp = auth.generate_otp(user.id)
+        # Login without OTP should fail
+        self.assertIsNone(auth.login("otp2@example.com", "password123"))
+        # Login with OTP should succeed
+        logged_in = auth.login("otp2@example.com", "password123", otp)
+        self.assertIsNotNone(logged_in)
+
     def test_logout(self):
         # Logout is a simple print and pass in the current implementation.
         # Test that it executes without error.

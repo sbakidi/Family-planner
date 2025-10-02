@@ -40,38 +40,40 @@
         <p>You have no events scheduled.</p>
     {% endif %}
 
-    <hr>
+    {% if session.get('role') == 'parent' %}
+        <hr>
 
-    <h3>Add New Event</h3>
-    <form method="POST" action="{{ url_for('add_event_web') }}">
-        <div>
-            <label for="title">Event Title:</label>
-            <input type="text" id="title" name="title" required>
-        </div>
-        <div>
-            <label for="description">Description (Optional):</label>
-            <textarea id="description" name="description"></textarea>
-        </div>
-        <div>
-            <label for="start_time">Start Time:</label>
-            <input type="datetime-local" id="start_time" name="start_time" required>
-        </div>
-        <div>
-            <label for="end_time">End Time:</label>
-            <input type="datetime-local" id="end_time" name="end_time" required>
-        </div>
-        <div>
-            <label for="child_id">Link to Child (Optional):</label>
-            <select id="child_id" name="child_id">
-                <option value="">-- None --</option>
-                {% for child in children %}
-                    <option value="{{ child.id }}">{{ child.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        {# Events created via this web interface are automatically linked to the current user #}
-        <div>
-            <input type="submit" value="Add Event">
-        </div>
-    </form>
+        <h3>Add New Event</h3>
+        <form method="POST" action="{{ url_for('add_event_web') }}">
+            <div>
+                <label for="title">Event Title:</label>
+                <input type="text" id="title" name="title" required>
+            </div>
+            <div>
+                <label for="description">Description (Optional):</label>
+                <textarea id="description" name="description"></textarea>
+            </div>
+            <div>
+                <label for="start_time">Start Time:</label>
+                <input type="datetime-local" id="start_time" name="start_time" required>
+            </div>
+            <div>
+                <label for="end_time">End Time:</label>
+                <input type="datetime-local" id="end_time" name="end_time" required>
+            </div>
+            <div>
+                <label for="child_id">Link to Child (Optional):</label>
+                <select id="child_id" name="child_id">
+                    <option value="">-- None --</option>
+                    {% for child in children %}
+                        <option value="{{ child.id }}">{{ child.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {# Events created via this web interface are automatically linked to the current user #}
+            <div>
+                <input type="submit" value="Add Event">
+            </div>
+        </form>
+    {% endif %}
 {% endblock %}
