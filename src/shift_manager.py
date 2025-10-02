@@ -1,6 +1,7 @@
 # import uuid # No longer needed for generating shift_ids by this module
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from zoneinfo import ZoneInfo
 from datetime import datetime # For string to datetime conversion
 import json
 
@@ -12,21 +13,24 @@ from src.shift import Shift
 
 # shifts_storage is removed, data will be stored in SQLite via SQLAlchemy
 
-def _parse_datetime(datetime_str):
-    """Helper to parse string to datetime. Returns None if format is wrong."""
+def _parse_datetime(datetime_str, timezone_str='UTC'):
+    """Parse a datetime string in the given timezone and return naive UTC."""
     if not datetime_str:
         return None
     try:
-        return datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        naive = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        local = naive.replace(tzinfo=ZoneInfo(timezone_str))
+        utc = local.astimezone(ZoneInfo('UTC'))
+        return utc.replace(tzinfo=None)
     except ValueError:
         print(f"Warning: Could not parse datetime string: {datetime_str}")
         return None
 
-def add_shift(user_id: int, start_time_str: str, end_time_str: str, name: str):
+def add_shift(user_id: int, start_time_str: str, end_time_str: str, name: str, timezone: str = 'UTC'):
     db = SessionLocal()
     try:
-        start_time_dt = _parse_datetime(start_time_str)
-        end_time_dt = _parse_datetime(end_time_str)
+        start_time_dt = _parse_datetime(start_time_str, timezone)
+        end_time_dt = _parse_datetime(end_time_str, timezone)
 
         if not start_time_dt or not end_time_dt:
             print("Error: Invalid start or end time format.")
@@ -66,7 +70,7 @@ def get_user_shifts(user_id: int):
     finally:
         db.close()
 
-def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str: str = None, new_name: str = None):
+def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str: str = None, new_name: str = None, timezone: str = 'UTC'):
     db = SessionLocal()
     try:
         shift = db.query(Shift).filter(Shift.id == shift_id).first()
@@ -76,14 +80,14 @@ def update_shift(shift_id: int, new_start_time_str: str = None, new_end_time_str
 
         updated = False
         if new_start_time_str is not None:
-            new_start_time_dt = _parse_datetime(new_start_time_str)
+            new_start_time_dt = _parse_datetime(new_start_time_str, timezone)
             if new_start_time_dt:
                 shift.start_time = new_start_time_dt
                 updated = True
             else:
                 print("Warning: Invalid new start time format, not updated.")
         if new_end_time_str is not None:
-            new_end_time_dt = _parse_datetime(new_end_time_str)
+            new_end_time_dt = _parse_datetime(new_end_time_str, timezone)
             if new_end_time_dt:
                 shift.end_time = new_end_time_dt
                 updated = True

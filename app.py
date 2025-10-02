@@ -26,12 +26,23 @@ except Exception as e:
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Generate a random secret key for sessions
 
+# Flask-Babel configuration
+app.config['BABEL_DEFAULT_LOCALE'] = 'en'
+app.config['LANGUAGES'] = ['en', 'es']
+app.config['BABEL_TRANSLATION_DIRECTORIES'] = 'translations'
+
+babel = Babel(app)
+
+@babel.localeselector
+def get_locale():
+    return request.accept_languages.best_match(app.config['LANGUAGES'])
+
 # Optional: A generic error handler for unhandled exceptions
 @app.errorhandler(Exception)
 def handle_generic_error(e):
     # Log the error e
     print(f"An unhandled exception occurred: {e}") # Basic logging
-    response = jsonify(message="An unexpected error occurred on the server.")
+    response = jsonify(message=_("An unexpected error occurred on the server."))
     response.status_code = 500
     return response
 
@@ -40,7 +51,7 @@ def register_user():
     try:
         data = request.get_json()
         if not data or not all(k in data for k in ("name", "email", "password")):
-            return jsonify(message="Missing name, email, or password in request"), 400
+            return jsonify(message=_("Missing name, email, or password in request")), 400
 
         name = data.get('name')
         email = data.get('email')
@@ -51,7 +62,7 @@ def register_user():
 
         if new_user:
             # new_user is an SQLAlchemy User model instance
-            return jsonify(message="User registered successfully", user_id=new_user.id, name=new_user.name), 201
+            return jsonify(message=_("User registered successfully"), user_id=new_user.id, name=new_user.name), 201
         else:
             # auth.register prints "Error: Email already exists." or DB error.
             # We can return a more generic message or rely on the print for now.
@@ -62,12 +73,12 @@ def register_user():
             existing = db_session.query(user.User).filter(user.User.email == email).first()
             db_session.close()
             if existing:
-                 return jsonify(message="Email already exists."), 409 # Conflict
-            return jsonify(message="Registration failed. Possible database error or invalid input."), 400
+                 return jsonify(message=_("Email already exists.")), 409 # Conflict
+            return jsonify(message=_("Registration failed. Possible database error or invalid input.")), 400
 
     except Exception as e: # Catch any other unexpected errors during registration
         print(f"Error in /auth/register: {e}") # Log it
-        return jsonify(message="An unexpected error occurred during registration."), 500
+        return jsonify(message=_("An unexpected error occurred during registration.")), 500
 
 
 @app.route('/auth/login', methods=['POST'])
@@ -75,7 +86,7 @@ def login_user():
     try:
         data = request.get_json()
         if not data or not all(k in data for k in ("email", "password")):
-            return jsonify(message="Missing email or password"), 400
+            return jsonify(message=_("Missing email or password")), 400
 
         email = data.get('email')
         password = data.get('password')
@@ -85,14 +96,14 @@ def login_user():
 
         if logged_in_user:
             # logged_in_user is an SQLAlchemy User model instance
-            return jsonify(message="Login successful", user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email), 200
+            return jsonify(message=_("Login successful"), user_id=logged_in_user.id, name=logged_in_user.name, email=logged_in_user.email), 200
         else:
             # auth.login prints "Error: Email not found." or "Error: Incorrect password."
-            return jsonify(message="Login failed: Invalid email or password."), 401 # Unauthorized
+            return jsonify(message=_("Login failed: Invalid email or password.")), 401 # Unauthorized
 
     except Exception as e:
         print(f"Error in /auth/login: {e}")
-        return jsonify(message="An unexpected error occurred during login."), 500
+        return jsonify(message=_("An unexpected error occurred during login.")), 500
 
 
 @app.route('/auth/logout', methods=['POST'])
@@ -102,7 +113,7 @@ def logout_user():
     # For this basic version, we just acknowledge the request.
     # auth.logout() itself just prints a message.
     auth.logout()
-    return jsonify(message="Logout successful"), 200
+    return jsonify(message=_("Logout successful")), 200
 
 
 # --- Child API Endpoints ---
@@ -111,14 +122,14 @@ def logout_user():
 def api_add_child(user_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "date_of_birth")):
-        return jsonify(message="Missing name or date_of_birth for child"), 400
+        return jsonify(message=_("Missing name or date_of_birth for child")), 400
 
     # Basic validation for user_id (as parent) could be done here if desired
     # db = SessionLocal()
     # parent_user = db.query(user.User).filter(user.User.id == user_id).first()
     # db.close()
     # if not parent_user:
-    #     return jsonify(message="Parent user not found"), 404
+    #     return jsonify(message=_("Parent user not found"), 404
 
     new_child_obj = child_manager.add_child(
         user_id=user_id,
@@ -131,14 +142,14 @@ def api_add_child(user_id):
         return jsonify(new_child_obj.to_dict(include_parents=True)), 201
     else:
         # child_manager.add_child prints errors
-        return jsonify(message="Failed to add child. Invalid input or parent user not found."), 400
+        return jsonify(message=_("Failed to add child. Invalid input or parent user not found.")), 400
 
 @app.route('/children/<int:child_id>', methods=['GET'])
 def api_get_child_details(child_id):
     child_obj = child_manager.get_child_details(child_id)
     if child_obj:
         return jsonify(child_obj.to_dict(include_parents=True)), 200
-    return jsonify(message="Child not found"), 404
+    return jsonify(message=_("Child not found")), 404
 
 @app.route('/users/<int:user_id>/children', methods=['GET'])
 def api_get_user_children(user_id):
@@ -150,7 +161,7 @@ def api_get_user_children(user_id):
 def api_update_child(child_id):
     data = request.get_json()
     if not data:
-        return jsonify(message="No data provided for update"), 400
+        return jsonify(message=_("No data provided for update")), 400
 
     updated_child_obj = child_manager.update_child_info(
         child_id=child_id,
@@ -161,19 +172,19 @@ def api_update_child(child_id):
     )
     if updated_child_obj:
         return jsonify(updated_child_obj.to_dict(include_parents=True)), 200
-    return jsonify(message="Child not found or update failed"), 404 # Or 400
+    return jsonify(message=_("Child not found or update failed")), 404 # Or 400
 
 @app.route('/children/<int:child_id>', methods=['DELETE'])
 def api_delete_child(child_id):
     if child_manager.remove_child(child_id):
-        return jsonify(message="Child deleted successfully"), 200 # Or 204
-    return jsonify(message="Child not found or delete failed"), 404
+        return jsonify(message=_("Child deleted successfully")), 200 # Or 204
+    return jsonify(message=_("Child not found or delete failed")), 404
 
 @app.route('/children/<int:child_id>/parents', methods=['POST'])
 def api_add_parent_to_child(child_id):
     data = request.get_json()
     if not data or 'user_id' not in data:
-        return jsonify(message="Missing user_id (for parent) in request"), 400
+        return jsonify(message=_("Missing user_id (for parent) in request")), 400
 
     other_parent_user_id = data['user_id']
 
@@ -182,7 +193,7 @@ def api_add_parent_to_child(child_id):
     success = child_manager.add_parent_to_child(child_id, other_parent_user_id)
 
     if success:
-        return jsonify(message="Parent added to child successfully"), 200
+        return jsonify(message=_("Parent added to child successfully")), 200
     else:
         # Check if child or user not found, or if already a parent
         db = SessionLocal()
@@ -191,12 +202,12 @@ def api_add_parent_to_child(child_id):
         db.close()
 
         if not child_exists:
-            return jsonify(message="Child not found"), 404
+            return jsonify(message=_("Child not found")), 404
         if not user_exists:
-            return jsonify(message="User (parent) not found"), 404
+            return jsonify(message=_("User (parent) not found")), 404
 
         # If both exist, the failure was likely due to already being a parent (or other logic in manager)
-        return jsonify(message="Failed to add parent. User might already be a parent or other error."), 400
+        return jsonify(message=_("Failed to add parent. User might already be a parent or other error.")), 400
 
 
 # --- Event API Endpoints ---
@@ -205,7 +216,15 @@ def api_add_parent_to_child(child_id):
 def api_create_event():
     data = request.get_json()
     if not data or not all(k in data for k in ("title", "start_time", "end_time")):
-        return jsonify(message="Missing title, start_time, or end_time for event"), 400
+        return jsonify(message=_("Missing title, start_time, or end_time for event")), 400
+
+    timezone_pref = 'UTC'
+    if data.get('user_id'):
+        db_tz = SessionLocal()
+        tz_user = db_tz.query(user.User).filter(user.User.id == data['user_id']).first()
+        if tz_user and tz_user.timezone:
+            timezone_pref = tz_user.timezone
+        db_tz.close()
 
     new_event_obj = event_manager.create_event(
         title=data['title'],
@@ -213,43 +232,61 @@ def api_create_event():
         start_time_str=data['start_time'],
         end_time_str=data['end_time'],
         linked_user_id=data.get('user_id'), # Optional
-        linked_child_id=data.get('child_id') # Optional
+        linked_child_id=data.get('child_id'), # Optional
+        timezone=timezone_pref
     )
     if new_event_obj:
         return jsonify(new_event_obj.to_dict()), 201
     else:
         # event_manager.create_event prints errors
-        return jsonify(message="Failed to create event. Invalid input or linked user/child not found."), 400
+        return jsonify(message=_("Failed to create event. Invalid input or linked user/child not found.")), 400
 
 @app.route('/events/<int:event_id>', methods=['GET'])
 def api_get_event_details(event_id):
     event_obj = event_manager.get_event_details(event_id)
     if event_obj:
-        return jsonify(event_obj.to_dict()), 200
-    return jsonify(message="Event not found"), 404
+        tz = event_obj.user.timezone if event_obj.user and event_obj.user.timezone else 'UTC'
+        return jsonify(event_obj.to_dict(timezone=tz)), 200
+    return jsonify(message=_("Event not found")), 404
 
 @app.route('/users/<int:user_id>/events', methods=['GET'])
 def api_get_user_events(user_id):
-    # Optional: Validate user_id exists
+    db_tz = SessionLocal()
+    tz_user = db_tz.query(user.User).filter(user.User.id == user_id).first()
+    tz = tz_user.timezone if tz_user and tz_user.timezone else 'UTC'
+    db_tz.close()
     events_list = event_manager.get_events_for_user(user_id)
-    return jsonify([e.to_dict(include_user=False) for e in events_list]), 200 # Don't include user again
+    return jsonify([e.to_dict(include_user=False, timezone=tz) for e in events_list]), 200
 
 @app.route('/children/<int:child_id>/events', methods=['GET'])
 def api_get_child_events(child_id):
-    # Optional: Validate child_id exists
     events_list = event_manager.get_events_for_child(child_id)
-    return jsonify([e.to_dict(include_child=False) for e in events_list]), 200 # Don't include child again
+    result = []
+    for e in events_list:
+        tz = e.user.timezone if e.user and e.user.timezone else 'UTC'
+        result.append(e.to_dict(include_child=False, timezone=tz))
+    return jsonify(result), 200
 
 @app.route('/events/<int:event_id>', methods=['PUT'])
 def api_update_event(event_id):
     data = request.get_json()
     if not data:
-        return jsonify(message="No data provided for update"), 400
+        return jsonify(message=_("No data provided for update")), 400
 
     # Handle explicit unlinking if 'user_id': null or 'child_id': null is passed
     unlink_user = 'user_id' in data and data['user_id'] is None
     unlink_child = 'child_id' in data and data['child_id'] is None
 
+    db_tz = SessionLocal()
+    event_rec = db_tz.query(event.Event).filter(event.Event.id == event_id).first()
+    tz = 'UTC'
+    if event_rec and event_rec.user and event_rec.user.timezone:
+        tz = event_rec.user.timezone
+    if 'user_id' in data and data['user_id'] is not None:
+        tz_user = db_tz.query(user.User).filter(user.User.id == data['user_id']).first()
+        if tz_user and tz_user.timezone:
+            tz = tz_user.timezone
+    db_tz.close()
     updated_event_obj = event_manager.update_event(
         event_id=event_id,
         title=data.get('title'),
@@ -259,17 +296,18 @@ def api_update_event(event_id):
         linked_user_id=data.get('user_id') if not unlink_user else None,
         linked_child_id=data.get('child_id') if not unlink_child else None,
         unlink_user=unlink_user,
-        unlink_child=unlink_child
+        unlink_child=unlink_child,
+        timezone=tz
     )
     if updated_event_obj:
-        return jsonify(updated_event_obj.to_dict()), 200
-    return jsonify(message="Event not found or update failed"), 404 # Or 400
+        return jsonify(updated_event_obj.to_dict(timezone=tz)), 200
+    return jsonify(message=_("Event not found or update failed")), 404 # Or 400
 
 @app.route('/events/<int:event_id>', methods=['DELETE'])
 def api_delete_event(event_id):
     if event_manager.delete_event(event_id):
-        return jsonify(message="Event deleted successfully"), 200 # Or 204
-    return jsonify(message="Event not found or delete failed"), 404
+        return jsonify(message=_("Event deleted successfully")), 200 # Or 204
+    return jsonify(message=_("Event not found or delete failed")), 404
 
 
 # --- Task API Endpoints ---
@@ -349,7 +387,7 @@ def api_delete_task(task_id):
 def api_create_global_shift_pattern():
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
-        return jsonify(message="Missing name, pattern_type, or definition"), 400
+        return jsonify(message=_("Missing name, pattern_type, or definition")), 400
 
     pattern = shift_pattern_manager.create_shift_pattern(
         name=data['name'],
@@ -360,13 +398,13 @@ def api_create_global_shift_pattern():
     )
     if pattern:
         return jsonify(pattern.to_dict()), 201
-    return jsonify(message="Failed to create global shift pattern"), 400
+    return jsonify(message=_("Failed to create global shift pattern")), 400
 
 @app.route('/users/<int:user_id>/shift-patterns', methods=['POST'])
 def api_create_user_shift_pattern(user_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
-        return jsonify(message="Missing name, pattern_type, or definition"), 400
+        return jsonify(message=_("Missing name, pattern_type, or definition")), 400
 
     # Optional: Validate user_id exists
     db = SessionLocal()
@@ -384,14 +422,14 @@ def api_create_user_shift_pattern(user_id):
     )
     if pattern:
         return jsonify(pattern.to_dict()), 201
-    return jsonify(message="Failed to create user-specific shift pattern"), 400
+    return jsonify(message=_("Failed to create user-specific shift pattern")), 400
 
 @app.route('/shift-patterns/<int:pattern_id>', methods=['GET'])
 def api_get_shift_pattern(pattern_id):
     pattern = shift_pattern_manager.get_shift_pattern(pattern_id)
     if pattern:
         return jsonify(pattern.to_dict()), 200
-    return jsonify(message="Shift pattern not found"), 404
+    return jsonify(message=_("Shift pattern not found")), 404
 
 @app.route('/shift-patterns', methods=['GET'])
 def api_get_global_shift_patterns():
@@ -414,7 +452,7 @@ def api_get_user_shift_patterns(user_id):
 def api_update_shift_pattern(pattern_id):
     data = request.get_json()
     if not data:
-        return jsonify(message="No data provided for update"), 400
+        return jsonify(message=_("No data provided for update")), 400
 
     # Basic ownership/admin check - This is simplified.
     # A real app would use @jwt_required or similar and check current_user.id
@@ -423,10 +461,10 @@ def api_update_shift_pattern(pattern_id):
 
     # pattern_to_update = shift_pattern_manager.get_shift_pattern(pattern_id)
     # if not pattern_to_update:
-    #     return jsonify(message="Shift pattern not found"), 404
+    #     return jsonify(message=_("Shift pattern not found"), 404
     # if pattern_to_update.user_id is not None:
     #     # This is a user-specific pattern, implement ownership check if auth is integrated
-    #     # For example: if current_user.id != pattern_to_update.user_id: return jsonify(message="Forbidden"), 403
+    #     # For example: if current_user.id != pattern_to_update.user_id: return jsonify(message=_("Forbidden"), 403
     #     pass
 
     updated_pattern = shift_pattern_manager.update_shift_pattern(
@@ -438,27 +476,27 @@ def api_update_shift_pattern(pattern_id):
     )
     if updated_pattern:
         return jsonify(updated_pattern.to_dict()), 200
-    return jsonify(message="Shift pattern not found or update failed"), 404 # Or 400
+    return jsonify(message=_("Shift pattern not found or update failed")), 404 # Or 400
 
 @app.route('/shift-patterns/<int:pattern_id>', methods=['DELETE'])
 def api_delete_shift_pattern(pattern_id):
     # Similar ownership/admin check as in PUT would be needed here.
     # pattern_to_delete = shift_pattern_manager.get_shift_pattern(pattern_id)
     # if not pattern_to_delete:
-    #     return jsonify(message="Shift pattern not found"), 404
+    #     return jsonify(message=_("Shift pattern not found"), 404
     # if pattern_to_delete.user_id is not None:
     #     # This is a user-specific pattern, implement ownership check
     #     pass
 
     if shift_pattern_manager.delete_shift_pattern(pattern_id):
-        return jsonify(message="Shift pattern deleted successfully"), 200 # Or 204
-    return jsonify(message="Shift pattern not found or delete failed"), 404
+        return jsonify(message=_("Shift pattern deleted successfully")), 200 # Or 204
+    return jsonify(message=_("Shift pattern not found or delete failed")), 404
 
 @app.route('/users/<int:user_id>/shift-patterns/<int:pattern_id>/generate-shifts', methods=['POST'])
 def api_generate_shifts_from_pattern(user_id, pattern_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("start_date", "end_date")):
-        return jsonify(message="Missing start_date or end_date in request"), 400
+        return jsonify(message=_("Missing start_date or end_date in request")), 400
 
     start_date_str = data['start_date']
     end_date_str = data['end_date']
@@ -485,11 +523,11 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
     except SQLAlchemyError as sqla_e: # Catch potential DB errors not caught by manager
         db.rollback()
         print(f"SQLAlchemyError during shift generation: {sqla_e}")
-        return jsonify(message="Database error during shift generation."), 500
+        return jsonify(message=_("Database error during shift generation.")), 500
     except Exception as e: # Catch any other unexpected errors
         db.rollback()
         print(f"Unexpected error during shift generation: {e}")
-        return jsonify(message="An unexpected error occurred during shift generation."), 500
+        return jsonify(message=_("An unexpected error occurred during shift generation.")), 500
     finally:
         db.close()
 
@@ -682,11 +720,16 @@ def add_shift():
         flash('Invalid datetime format submitted.', 'danger')
         return redirect(url_for('shifts_view'))
 
+    db_tz = SessionLocal()
+    tz_user = db_tz.query(user.User).filter(user.User.id == user_id).first()
+    timezone_pref = tz_user.timezone if tz_user and tz_user.timezone else 'UTC'
+    db_tz.close()
     new_shift = shift_manager.add_shift(
         user_id=user_id,
         name=name,
         start_time_str=start_time_formatted,
-        end_time_str=end_time_formatted
+        end_time_str=end_time_formatted,
+        timezone=timezone_pref
     ) # Managers handle their own sessions
 
     if new_shift:
@@ -761,13 +804,18 @@ def add_event_web():
 
     # Events created via web are always linked to the current user.
     # event_manager.create_event handles its own DB session.
+    db_tz = SessionLocal()
+    tz_user = db_tz.query(user.User).filter(user.User.id == user_id).first()
+    timezone_pref = tz_user.timezone if tz_user and tz_user.timezone else 'UTC'
+    db_tz.close()
     new_event = event_manager.create_event(
         title=title,
         description=description,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
         linked_user_id=user_id, # Auto-link to current user
-        linked_child_id=linked_child_id if linked_child_id else None # Ensure None if 0 or empty
+        linked_child_id=linked_child_id if linked_child_id else None, # Ensure None if 0 or empty
+        timezone=timezone_pref
     )
 
     if new_event:
@@ -946,7 +994,7 @@ def add_child_web():
 def api_add_residency_period(child_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("parent_id", "start_datetime", "end_datetime")):
-        return jsonify(message="Missing parent_id, start_datetime, or end_datetime"), 400
+        return jsonify(message=_("Missing parent_id, start_datetime, or end_datetime")), 400
 
     db = SessionLocal()
     try:
@@ -968,11 +1016,11 @@ def api_add_residency_period(child_id):
     except SQLAlchemyError as sqla_e:
         db.rollback()
         print(f"SQLAlchemyError adding residency period: {sqla_e}")
-        return jsonify(message="Database error adding residency period."), 500
+        return jsonify(message=_("Database error adding residency period.")), 500
     except Exception as e:
         db.rollback()
         print(f"Unexpected error adding residency period: {e}")
-        return jsonify(message="An unexpected error occurred."), 500
+        return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
 
@@ -986,7 +1034,7 @@ def api_get_residency_periods_for_child(child_id):
         # Validate child_id exists
         target_child = db.query(child.Child).filter(child.Child.id == child_id).first()
         if not target_child:
-            return jsonify(message="Child not found"), 404
+            return jsonify(message=_("Child not found")), 404
 
         periods = child_manager.get_residency_periods_for_child(
             db_session=db,
@@ -997,7 +1045,7 @@ def api_get_residency_periods_for_child(child_id):
         return jsonify([p.to_dict() for p in periods]), 200
     except Exception as e: # Catch-all for unexpected errors
         print(f"Error getting residency periods: {e}")
-        return jsonify(message="An unexpected error occurred."), 500
+        return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
 
@@ -1008,7 +1056,7 @@ def api_get_residency_period_details(period_id):
         period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
         if period:
             return jsonify(period.to_dict(include_child=True, include_parent=True)), 200
-        return jsonify(message="Residency period not found"), 404
+        return jsonify(message=_("Residency period not found")), 404
     finally:
         db.close()
 
@@ -1016,7 +1064,7 @@ def api_get_residency_period_details(period_id):
 def api_update_residency_period(period_id):
     data = request.get_json()
     if not data:
-        return jsonify(message="No data provided for update"), 400
+        return jsonify(message=_("No data provided for update")), 400
 
     db = SessionLocal()
     try:
@@ -1037,11 +1085,11 @@ def api_update_residency_period(period_id):
     except SQLAlchemyError as sqla_e:
         db.rollback()
         print(f"SQLAlchemyError updating residency period: {sqla_e}")
-        return jsonify(message="Database error updating residency period."), 500
+        return jsonify(message=_("Database error updating residency period.")), 500
     except Exception as e:
         db.rollback()
         print(f"Unexpected error updating residency period: {e}")
-        return jsonify(message="An unexpected error occurred."), 500
+        return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
 
@@ -1052,16 +1100,16 @@ def api_delete_residency_period(period_id):
         success = child_manager.delete_residency_period(db_session=db, period_id=period_id)
         if success:
             db.commit()
-            return jsonify(message="Residency period deleted successfully"), 200 # Or 204
-        return jsonify(message="Residency period not found"), 404
+            return jsonify(message=_("Residency period deleted successfully")), 200 # Or 204
+        return jsonify(message=_("Residency period not found")), 404
     except SQLAlchemyError as sqla_e: # If delete causes DB error (e.g. FK issue if not handled by cascade)
         db.rollback()
         print(f"SQLAlchemyError deleting residency period: {sqla_e}")
-        return jsonify(message="Database error deleting residency period."), 500
+        return jsonify(message=_("Database error deleting residency period.")), 500
     except Exception as e:
         db.rollback()
         print(f"Unexpected error deleting residency period: {e}")
-        return jsonify(message="An unexpected error occurred."), 500
+        return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
 
@@ -1150,7 +1198,7 @@ def api_decline_residency_change(period_id):
 def api_get_child_residency_on_date(child_id):
     date_param = request.args.get('date')
     if not date_param:
-        return jsonify(message="Missing 'date' query parameter (YYYY-MM-DD)"), 400
+        return jsonify(message=_("Missing 'date' query parameter (YYYY-MM-DD)")), 400
 
     db = SessionLocal()
     try:
@@ -1158,7 +1206,7 @@ def api_get_child_residency_on_date(child_id):
         target_child = db.query(child.Child).filter(child.Child.id == child_id).first()
         if not target_child:
             db.close()
-            return jsonify(message="Child not found"), 404
+            return jsonify(message=_("Child not found")), 404
 
         active_periods = child_manager.get_child_residency_on_date(
             db_session=db,
@@ -1177,7 +1225,7 @@ def api_get_child_residency_on_date(child_id):
         return jsonify(message=str(ve)), 400
     except Exception as e:
         print(f"Error getting child residency on date: {e}")
-        return jsonify(message="An unexpected error occurred."), 500
+        return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
 

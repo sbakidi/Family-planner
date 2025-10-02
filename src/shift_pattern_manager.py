@@ -34,7 +34,9 @@ def create_shift_pattern(name: str, description: str, pattern_type: str, definit
         db.close()
 
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
+def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: int, start_date_str: str, end_date_str: str, timezone: str = 'UTC'):
 def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: int,
                                 start_date_str: str, end_date_str: str,
                                 holidays=None, exceptions=None):
@@ -114,7 +116,9 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                     continue
 
                 shift_start_datetime = datetime.combine(current_date, datetime.strptime(start_time_str, "%H:%M").time())
+                shift_start_datetime = shift_start_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
                 shift_end_datetime = datetime.combine(current_date, datetime.strptime(end_time_str, "%H:%M").time())
+                shift_end_datetime = shift_end_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
                 if shift_end_datetime < shift_start_datetime: # Overnight shift
                     shift_end_datetime += timedelta(days=1)
@@ -168,7 +172,9 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                     continue
 
                 shift_start_datetime = datetime.combine(current_date, datetime.strptime(start_time_str, "%H:%M").time())
+                shift_start_datetime = shift_start_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
                 shift_end_datetime = datetime.combine(current_date, datetime.strptime(end_time_str, "%H:%M").time())
+                shift_end_datetime = shift_end_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
                 if shift_end_datetime < shift_start_datetime: # Overnight
                     shift_end_datetime += timedelta(days=1)
