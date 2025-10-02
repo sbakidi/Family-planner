@@ -44,6 +44,11 @@ def create_tables():
     global engine
     if not engine:
         initialize_database_for_application() # Ensure engine is initialized
+    # Ensure badge model is imported so its table is registered
+    try:
+        from . import badge  # noqa: F401
+    except Exception:
+        pass
     Base.metadata.create_all(bind=engine)
     # print("Database tables created (if they didn't exist).")
 

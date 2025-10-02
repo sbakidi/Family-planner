@@ -10,15 +10,27 @@
             {% for event in events %}
                 <li>
                     <strong>{{ event.title }}</strong>
+                    {% if overbooked_ids and event.id in overbooked_ids %}
+                        <span class="overbook-warning">(Overbooking)</span>
+                    {% endif %}
                     <p>{{ event.description if event.description else 'No description.' }}</p>
                     {% if event.category %}
                         <em>Category: {{ event.category }}</em><br>
+                    {% if event.destination %}
+                        <p>Destination: {{ event.destination }}</p>
                     {% endif %}
                     <small>
                         From: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if event.start_time else 'N/A' }} <br>
                         To: {{ event.end_time.strftime('%Y-%m-%d %H:%M') if event.end_time else 'N/A' }}
+                        {% if event.completed %}- Completed{% endif %}
                     </small>
                     <br>
+                    {% if event.recommended_leave_time %}
+                        <em>Leave by {{ event.recommended_leave_time.strftime('%Y-%m-%d %H:%M') }}</em><br>
+                    {% endif %}
+                    {% if event.traffic_warning %}
+                        <strong style="color:red;">Heavy traffic reported</strong><br>
+                    {% endif %}
                     <small>
                         {% if event.user_id and event.child_id %}
                             Linked to: User (Self) and Child ID {{ event.child_id }}
@@ -32,6 +44,11 @@
                             Not linked to specific user or child.
                         {% endif %}
                     </small>
+                    {% if not event.completed %}
+                        <form method="POST" action="{{ url_for('complete_event_web', event_id=event.id) }}" style="display:inline;">
+                            <button type="submit">Mark Complete</button>
+                        </form>
+                    {% endif %}
                 </li>
                 <hr>
             {% endfor %}
@@ -40,7 +57,8 @@
         <p>You have no events scheduled.</p>
     {% endif %}
 
-    <hr>
+    {% if session.get('role') == 'parent' %}
+        <hr>
 
     <h3>Add New Event</h3>
     <form method="POST" action="{{ url_for('add_event_web') }}">
@@ -65,6 +83,10 @@
             <input type="datetime-local" id="end_time" name="end_time" required>
         </div>
         <div>
+            <label for="destination">Destination (Optional):</label>
+            <input type="text" id="destination" name="destination">
+        </div>
+        <div>
             <label for="child_id">Link to Child (Optional):</label>
             <select id="child_id" name="child_id">
                 <option value="">-- None --</option>
@@ -78,4 +100,37 @@
             <input type="submit" value="Add Event">
         </div>
     </form>
+        <h3>Add New Event</h3>
+        <form method="POST" action="{{ url_for('add_event_web') }}">
+            <div>
+                <label for="title">Event Title:</label>
+                <input type="text" id="title" name="title" required>
+            </div>
+            <div>
+                <label for="description">Description (Optional):</label>
+                <textarea id="description" name="description"></textarea>
+            </div>
+            <div>
+                <label for="start_time">Start Time:</label>
+                <input type="datetime-local" id="start_time" name="start_time" required>
+            </div>
+            <div>
+                <label for="end_time">End Time:</label>
+                <input type="datetime-local" id="end_time" name="end_time" required>
+            </div>
+            <div>
+                <label for="child_id">Link to Child (Optional):</label>
+                <select id="child_id" name="child_id">
+                    <option value="">-- None --</option>
+                    {% for child in children %}
+                        <option value="{{ child.id }}">{{ child.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {# Events created via this web interface are automatically linked to the current user #}
+            <div>
+                <input type="submit" value="Add Event">
+            </div>
+        </form>
+    {% endif %}
 {% endblock %}

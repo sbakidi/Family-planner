@@ -2,3 +2,11 @@ Flask
 SQLAlchemy
 pytest
 requests
+flask-ask
+google-assistant-sdk
+pyotp
+flask-restx
+google-api-python-client
+google-auth-oauthlib
+
+

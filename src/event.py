@@ -10,12 +10,17 @@ class Event(Base):
     title = Column(String, index=True)
     description = Column(String, nullable=True)
     category = Column(String, nullable=True)
+    destination = Column(String, nullable=True)
     start_time = Column(DateTime) # Previous: start_time (str)
     end_time = Column(DateTime)   # Previous: end_time (str)
+    completed = Column(Integer, default=0)  # 0 = not done, 1 = done
 
     # Foreign keys to link event to a user and/or a child
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Previous: linked_user_id (str, uuid)
     child_id = Column(Integer, ForeignKey("children.id"), nullable=True) # Previous: linked_child_id (str, uuid)
+
+    # Flag to indicate where the event originated from (e.g. 'user', 'school')
+    source = Column(String, default='user')
 
     # Relationships (optional, but good for accessing related objects)
     # If an event can be linked to a User, this defines how to access that User object
@@ -32,7 +37,7 @@ class Event(Base):
     # start_time and end_time should be DateTime objects.
 
     def __repr__(self):
-        return f"<Event(id={self.id}, title='{self.title}')>"
+        return f"<Event(id={self.id}, title='{self.title}', source='{self.source}')>"
 
     def to_dict(self, include_user=True, include_child=True):
         data = {
@@ -40,10 +45,12 @@ class Event(Base):
             "title": self.title,
             "description": self.description,
             "category": self.category,
+            "destination": self.destination,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "user_id": self.user_id,
-            "child_id": self.child_id
+            "child_id": self.child_id,
+            "source": self.source
         }
         # Optionally include simplified representations of linked user/child
         if include_user and self.user: # self.user is the relationship attribute
