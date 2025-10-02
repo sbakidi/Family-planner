@@ -33,7 +33,8 @@ class TestAuthAPI(unittest.TestCase):
         # Ensure all models are imported so Base knows about them.
         # This should ideally be handled by having a central models import, e.g., in src/__init__.py
         # or by importing them explicitly here.
-        from src import user, shift, child, event, shift_pattern, residency_period # Import all models
+        from src import user, shift, child, event, shift_pattern, residency_period, api_token
+        # Import all models including tokens
         create_tables()
 
     @classmethod
@@ -60,7 +61,7 @@ class TestAuthAPI(unittest.TestCase):
         self.db.close()
 
     def _register_user_api(self, name="Test User", email="test@example.com", password="password123"):
-        return self.client.post('/auth/register', json={
+        return self.client.post('/api/v1/auth/register', json={
             "name": name,
             "email": email,
             "password": password
@@ -81,12 +82,12 @@ class TestAuthAPI(unittest.TestCase):
         self.assertEqual(user_in_db.id, data['user_id'])
 
     def test_register_missing_fields(self):
-        response = self.client.post('/auth/register', json={"name": "Test"})
+        response = self.client.post('/api/v1/auth/register', json={"name": "Test"})
         self.assertEqual(response.status_code, 400)
         data = response.get_json()
         self.assertIn("Missing", data['message'])
 
-        response_missing_email = self.client.post('/auth/register', json={
+        response_missing_email = self.client.post('/api/v1/auth/register', json={
             "name": "Another User", "password": "password123"
         })
         self.assertEqual(response_missing_email.status_code, 400)
@@ -104,7 +105,7 @@ class TestAuthAPI(unittest.TestCase):
         self.assertEqual(reg_response.status_code, 201)
 
         # Attempt login
-        response = self.client.post('/auth/login', json={
+        response = self.client.post('/api/v1/auth/login', json={
             "email": "login_test@example.com",
             "password": "password123"
         })
@@ -117,7 +118,7 @@ class TestAuthAPI(unittest.TestCase):
     def test_login_wrong_password(self):
         self._register_user_api(email="wrongpass@example.com", password="correctpassword")
 
-        response = self.client.post('/auth/login', json={
+        response = self.client.post('/api/v1/auth/login', json={
             "email": "wrongpass@example.com",
             "password": "incorrectpassword"
         })
@@ -125,8 +126,17 @@ class TestAuthAPI(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data['message'], "Login failed: Invalid email or password.")
 
+    def test_otp_endpoints(self):
+        reg_response = self._register_user_api(email="otp_api@example.com")
+        user_id = reg_response.get_json()['user_id']
+        gen_resp = self.client.post('/auth/otp/generate', json={"user_id": user_id})
+        self.assertEqual(gen_resp.status_code, 200)
+        otp = gen_resp.get_json()['otp']
+        verify_resp = self.client.post('/auth/otp/verify', json={"user_id": user_id, "otp": otp})
+        self.assertEqual(verify_resp.status_code, 200)
+
     def test_login_user_not_found(self):
-        response = self.client.post('/auth/login', json={
+        response = self.client.post('/api/v1/auth/login', json={
             "email": "nosuchuser@example.com",
             "password": "password123"
         })
@@ -137,7 +147,7 @@ class TestAuthAPI(unittest.TestCase):
 
     def test_logout_success(self):
         # Logout is stateless for the API, just returns a message
-        response = self.client.post('/auth/logout')
+        response = self.client.post('/api/v1/auth/logout')
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['message'], "Logout successful")
