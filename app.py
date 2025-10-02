@@ -8,6 +8,9 @@ from datetime import datetime
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
 from src.notification import get_user_queue
 
+from src import auth, user, shift, child, event # Models
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager
+from src import ai_scheduler  # Simple scheduling heuristics
 from src.database import init_db, SessionLocal
 from src.token_manager import token_required, generate_token_for_user
 # Import residency_period model for init_db
@@ -944,7 +947,8 @@ def events_view():
     user_id = session['user_id']
     # Managers handle their own DB sessions
     user_events = event_manager.get_events_for_user(user_id=user_id)
-    user_children = child_manager.get_user_children(user_id=user_id) # For the dropdown
+    user_children = child_manager.get_user_children(user_id=user_id)  # For the dropdown
+    overbooked_ids = ai_scheduler.find_overlapping_events(user_events)
 
     # Enhance event objects with child names if linked
     # This is a bit inefficient here; ideally, a JOIN in the query or a method in the model would do this.
@@ -952,7 +956,7 @@ def events_view():
     # This is not ideal as it leads to N+1 queries if not careful or if ORM doesn't auto-load.
     # event_manager.get_events_for_user already returns Event objects with child relationship loaded if accessed.
 
-    return render_template('events.html', events=user_events, children=user_children)
+    return render_template('events.html', events=user_events, children=user_children, overbooked_ids=overbooked_ids)
 
 @app.route('/events/add-web', methods=['POST'])
 def add_event_web():
@@ -1008,12 +1012,16 @@ def add_event_web():
         description=description,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
+        child_id=linked_child_id if linked_child_id else None,
         linked_user_id=user_id,
         linked_child_id=linked_child_id if linked_child_id else None
     )
 
     if new_event:
-        flash('Event added successfully!', 'success')
+        if adjusted:
+            flash('Requested time was busy. Event scheduled for ' + new_event.start_time.strftime('%Y-%m-%d %H:%M'), 'warning')
+        else:
+            flash('Event added successfully!', 'success')
     else:
         flash('Failed to add event. Please check your input or try again.', 'danger')
 
