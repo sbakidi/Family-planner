@@ -32,6 +32,7 @@ def _parse_datetime(datetime_str: str):
 
 def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
                  linked_user_id: int = None, linked_child_id: int = None,
+                 category: str = None):
                  destination: str = None):
                  source: str = 'user'):
     db = SessionLocal()
@@ -47,6 +48,7 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
         new_event = Event(
             title=title,
             description=description,
+            category=category,
             destination=destination,
             start_time=start_time_dt,
             end_time=end_time_dt,
@@ -118,6 +120,7 @@ def get_events_for_child(child_id: int):
 def update_event(event_id: int, title: str = None, description: str = None,
                  start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
+                 category: str = None,
                  destination: str = None,
                  unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
                  completed: bool | None = None,
@@ -136,6 +139,8 @@ def update_event(event_id: int, title: str = None, description: str = None,
         if description is not None:
             event.description = description
             updated = True
+        if category is not None:
+            event.category = category
         if destination is not None:
             event.destination = destination
             updated = True

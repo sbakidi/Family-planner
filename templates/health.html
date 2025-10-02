@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+
+{% block title %}Health Dashboard{% endblock %}
+
+{% block content %}
+    <h2>Health Dashboard</h2>
+    {% if summary %}
+        <p>Total Steps: {{ summary.total_steps }}</p>
+        <p>Total Sleep Hours: {{ summary.total_sleep_hours }}</p>
+    {% else %}
+        <p>No health data available.</p>
+    {% endif %}
+{% endblock %}

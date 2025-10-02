@@ -3,6 +3,12 @@ from sqlalchemy.exc import SQLAlchemyError
 import os  # For secret key
 from datetime import datetime, timedelta
 
+
+
+from src.database import init_db, SessionLocal
+from src import residency_period  # Import residency_period model for init_db
+from src import health_device
+from datetime import datetime, timedelta
 from src import travel_info
 from werkzeug.utils import secure_filename
 
@@ -285,6 +291,7 @@ def api_create_event():
         description=data.get('description'),
         start_time_str=data['start_time'],
         end_time_str=data['end_time'],
+        category=data.get('category')
         linked_user_id=data.get('user_id'),  # Optional
         linked_child_id=data.get('child_id'),  # Optional
         destination=data.get('destination')
@@ -1063,6 +1070,7 @@ def add_event_web():
     user_id = session['user_id']
     title = request.form.get('title')
     description = request.form.get('description')
+    category = request.form.get('category')
     start_time_str_html = request.form.get('start_time') # HTML datetime-local
     end_time_str_html = request.form.get('end_time')     # HTML datetime-local
     child_id_str = request.form.get('child_id')
@@ -1110,9 +1118,11 @@ def add_event_web():
         destination=destination,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
+        linked_user_id=user_id, # Auto-link to current user
+        linked_child_id=linked_child_id if linked_child_id else None, # Ensure None if 0 or empty
+        category=category
         child_id=linked_child_id if linked_child_id else None,
-        linked_user_id=user_id,
-        linked_child_id=linked_child_id if linked_child_id else None
+        
     )
 
     if new_event:
@@ -1126,6 +1136,22 @@ def add_event_web():
     return redirect(url_for('events_view'))
 
 
+@app.route('/health', methods=['GET'])
+def health_dashboard():
+    if 'user_id' not in session:
+        flash('Please login to view health data.', 'warning')
+        return redirect(url_for('login'))
+
+    device = health_device.device_from_env()
+    summary = None
+    if device:
+        today = datetime.today().date()
+        start = today - timedelta(days=6)
+        steps = device.fetch_steps(start, today)
+        sleep = device.fetch_sleep(start, today)
+        summary = health_device.summarize_health(steps, sleep)
+
+    return render_template('health.html', summary=summary)
 @app.route('/events/<int:event_id>/complete-web', methods=['POST'])
 def complete_event_web(event_id):
     if 'user_id' not in session:

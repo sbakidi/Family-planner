@@ -14,6 +14,8 @@
                         <span class="overbook-warning">(Overbooking)</span>
                     {% endif %}
                     <p>{{ event.description if event.description else 'No description.' }}</p>
+                    {% if event.category %}
+                        <em>Category: {{ event.category }}</em><br>
                     {% if event.destination %}
                         <p>Destination: {{ event.destination }}</p>
                     {% endif %}
@@ -67,6 +69,10 @@
         <div>
             <label for="description">Description (Optional):</label>
             <textarea id="description" name="description"></textarea>
+        </div>
+        <div>
+            <label for="category">Category (Optional):</label>
+            <input type="text" id="category" name="category">
         </div>
         <div>
             <label for="start_time">Start Time:</label>
