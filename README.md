@@ -85,12 +85,16 @@ Visit `http://localhost:5000` in your browser.
 
 ## Running Tests
 
-Install the requirements as above and run:
+Install the requirements as above and set the `TEST_MODE_ENABLED` environment
+variable so an in-memory test database is used. Then run the tests:
 
 ```bash
+export TEST_MODE_ENABLED=1
 pytest
 ```
 
+You can also run `make test`, which sets up the database and invokes `pytest`
+automatically.
 This will execute the unit tests for the API and manager modules.
 
 
