@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}Documents{% endblock %}
+
+{% block content %}
+    <h2>My Documents</h2>
+
+    {% if documents %}
+        <ul>
+        {% for doc in documents %}
+            <li>
+                {{ doc.filename }}
+                {% if doc.child %}- for {{ doc.child.name }}{% endif %}
+                <a href="{{ url_for('download_document', filename=doc.filename) }}">Download</a>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No documents uploaded.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Upload Document</h3>
+    <form method="POST" enctype="multipart/form-data">
+        <div>
+            <label for="file">File:</label>
+            <input type="file" id="file" name="file" required>
+        </div>
+        <div>
+            <label for="child_id">Link to Child (Optional):</label>
+            <select id="child_id" name="child_id">
+                <option value="">-- None --</option>
+                {% for child in children %}
+                    <option value="{{ child.id }}">{{ child.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <input type="submit" value="Upload">
+        </div>
+    </form>
+{% endblock %}

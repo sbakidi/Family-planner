@@ -14,6 +14,8 @@
         .alert { padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; }
         .alert-success { color: #3c763d; background-color: #dff0d8; border-color: #d6e9c6; }
         .alert-danger { color: #a94442; background-color: #f2dede; border-color: #ebccd1; }
+        .alert-warning { color: #8a6d3b; background-color: #fcf8e3; border-color: #faebcc; }
+        .overbook-warning { color: red; font-weight: bold; }
         form label { display: block; margin-top: 10px; }
         form input[type="text"], form input[type="email"], form input[type="password"] {
             width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;
@@ -30,11 +32,27 @@
         <nav>
             <ul>
                 <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('albums_view') }}">Albums</a></li>
+                <li><a href="{{ url_for('photos_view') }}">Photos</a></li>
+                <li><a href="{{ url_for('manage_plugins') }}">Plugins</a></li>
                 {% if session.get('user_id') %}
+                    <li><a href="{{ url_for('documents_view') }}">Documents</a></li>
+                    {% if session.get('role') == 'parent' %}
+                        <li><a href="{{ url_for('shifts_view') }}">Shifts</a></li>
+                        <li><a href="{{ url_for('children_view') }}">Children</a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('events_view') }}">Events</a></li>
+                    <li><a href="{{ url_for('expenses_view') }}">Expenses</a></li>
+
                     <li><a href="{{ url_for('logout') }}">Logout</a></li>
                     <li><a href="{{ url_for('budgets_view') }}">Categories</a></li>
                     <li><a href="{{ url_for('expenses_view') }}">Expenses</a></li>
                     <li><a href="{{ url_for('analytics_dashboard') }}">Analytics</a></li>
+                    <li><a href="{{ url_for('health_dashboard') }}">Health</a></li>
+                    <li><a href="{{ url_for('leaderboard_view') }}">Leaderboard</a></li>
+                    {# Add other authenticated links here, e.g., Profile, Dashboard #}
+                    <li><a href="{{ url_for('analytics_view') }}">Analytics</a></li>
+
                 {% else %}
                     <li><a href="{{ url_for('login') }}">Login</a></li>
                     <li><a href="{{ url_for('register') }}">Register</a></li>
@@ -52,5 +70,13 @@
         {% endwith %}
         {% block content %}{% endblock %}
     </div>
+    {% if session.get('user_id') %}
+    <script>
+        const evt = new EventSource("{{ url_for('notifications_stream') }}");
+        evt.onmessage = (e) => {
+            alert("Notification: " + e.data);
+        };
+    </script>
+    {% endif %}
 </body>
 </html>

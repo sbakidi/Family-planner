@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}Leaderboard{% endblock %}
+
+{% block content %}
+    <h2>Family Leaderboard</h2>
+    <ul>
+        {% for entry in leaders %}
+            <li>
+                <strong>{{ entry.name }}</strong> - {{ entry.points }} points
+                {% if entry.badges %}
+                    ({{ entry.badges | join(', ') }})
+                {% endif %}
+            </li>
+        {% else %}
+            <li>No progress yet.</li>
+        {% endfor %}
+    </ul>
+{% endblock %}
