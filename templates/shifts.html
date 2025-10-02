@@ -22,24 +22,25 @@
         <p>You have no shifts scheduled.</p>
     {% endif %}
 
-    <hr>
-
-    <h3>Add New Shift</h3>
-    <form method="POST" action="{{ url_for('add_shift') }}">
-        <div>
-            <label for="name">Shift Name:</label>
-            <input type="text" id="name" name="name" required>
-        </div>
-        <div>
-            <label for="start_time">Start Time:</label>
-            <input type="datetime-local" id="start_time" name="start_time" required>
-        </div>
-        <div>
-            <label for="end_time">End Time:</label>
-            <input type="datetime-local" id="end_time" name="end_time" required>
-        </div>
-        <div>
-            <input type="submit" value="Add Shift">
-        </div>
-    </form>
+    {% if session.get('role') == 'parent' %}
+        <hr>
+        <h3>Add New Shift</h3>
+        <form method="POST" action="{{ url_for('add_shift') }}">
+            <div>
+                <label for="name">Shift Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            <div>
+                <label for="start_time">Start Time:</label>
+                <input type="datetime-local" id="start_time" name="start_time" required>
+            </div>
+            <div>
+                <label for="end_time">End Time:</label>
+                <input type="datetime-local" id="end_time" name="end_time" required>
+            </div>
+            <div>
+                <input type="submit" value="Add Shift">
+            </div>
+        </form>
+    {% endif %}
 {% endblock %}
