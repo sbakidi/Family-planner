@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block title %}Plugins{% endblock %}
+
+{% block content %}
+<h2>Plugin Management</h2>
+<table>
+    <tr><th>Name</th><th>Status</th><th>Action</th></tr>
+    {% for plugin in plugins %}
+    <tr>
+        <td>{{ plugin.name }}</td>
+        <td>{{ 'Enabled' if plugin.enabled else 'Disabled' }}</td>
+        <td>
+            {% if plugin.enabled %}
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="plugin" value="{{ plugin.name }}">
+                <input type="hidden" name="action" value="disable">
+                <input type="submit" value="Disable">
+            </form>
+            {% else %}
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="plugin" value="{{ plugin.name }}">
+                <input type="hidden" name="action" value="enable">
+                <input type="submit" value="Enable">
+            </form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

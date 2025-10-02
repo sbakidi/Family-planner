@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block title %}Photos{% endblock %}
+
+{% block content %}
+<h2>Photos</h2>
+<form method="get" action="{{ url_for('photos_view') }}">
+    <input type="text" name="search" placeholder="Search" value="{{ request.args.get('search','') }}">
+    <input type="submit" value="Search">
+</form>
+<ul>
+    {% for photo in photos %}
+        <li><strong>{{ photo.title or photo.filename }}</strong>
+            {% if photo.tags %}- Tags: {{ photo.tags }}{% endif %}
+            <br>{{ photo.description or '' }}
+        </li>
+    {% endfor %}
+</ul>
+{% if not photos %}
+<p>No photos found.</p>
+{% endif %}
+{% endblock %}
