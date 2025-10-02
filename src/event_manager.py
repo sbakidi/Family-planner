@@ -1,4 +1,3 @@
-# import uuid # No longer needed for generating event_ids
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
@@ -10,11 +9,6 @@ from src.child import Child
 
 from src.database import SessionLocal
 from src.event import Event
-# User and Child models might be needed if we want to validate existence of user_id/child_id before linking
-# from src.user import User
-# from src.child import Child
-
-# events_storage is removed
 
 def _parse_datetime(datetime_str: str, timezone_str: str = 'UTC'):
     """Parse a datetime string in the given timezone and return naive UTC."""
@@ -40,14 +34,14 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
             print("Error: Invalid start or end time format for event.")
             return None
 
-        # Note: linked_user_id and linked_child_id are now user_id and child_id in the Event model
         new_event = Event(
             title=title,
             description=description,
             start_time=start_time_dt,
             end_time=end_time_dt,
-            user_id=linked_user_id, # This is the FK field in Event model
-            child_id=linked_child_id # This is the FK field in Event model
+            user_id=linked_user_id,
+            child_id=linked_child_id,
+            institution_id=institution_id
         )
         db.add(new_event)
         db.commit()
@@ -88,7 +82,6 @@ def get_event_details(event_id: int):
 def get_events_for_user(user_id: int):
     db = SessionLocal()
     try:
-        # Event model has 'user_id' as the foreign key field
         events = db.query(Event).filter(Event.user_id == user_id).all()
         return events
     except SQLAlchemyError as e:
@@ -100,11 +93,21 @@ def get_events_for_user(user_id: int):
 def get_events_for_child(child_id: int):
     db = SessionLocal()
     try:
-        # Event model has 'child_id' as the foreign key field
         events = db.query(Event).filter(Event.child_id == child_id).all()
         return events
     except SQLAlchemyError as e:
         print(f"Database error getting events for child: {e}")
+        return []
+    finally:
+        db.close()
+
+def get_events_for_institution(institution_id: int):
+    db = SessionLocal()
+    try:
+        events = db.query(Event).filter(Event.institution_id == institution_id).all()
+        return events
+    except SQLAlchemyError as e:
+        print(f"Database error getting events for institution: {e}")
         return []
     finally:
         db.close()
@@ -154,6 +157,13 @@ def update_event(event_id: int, title: str = None, description: str = None,
             updated = True
         elif linked_child_id is not None:
             event.child_id = linked_child_id
+            updated = True
+
+        if unlink_institution:
+            event.institution_id = None
+            updated = True
+        elif institution_id is not None:
+            event.institution_id = institution_id
             updated = True
 
         if updated:

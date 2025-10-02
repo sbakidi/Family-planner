@@ -13,9 +13,10 @@ class Event(Base):
     start_time = Column(DateTime) # Previous: start_time (str)
     end_time = Column(DateTime)   # Previous: end_time (str)
 
-    # Foreign keys to link event to a user and/or a child
+    # Foreign keys to link event to a user, child, or institution
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Previous: linked_user_id (str, uuid)
     child_id = Column(Integer, ForeignKey("children.id"), nullable=True) # Previous: linked_child_id (str, uuid)
+    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
 
     # Relationships (optional, but good for accessing related objects)
     # If an event can be linked to a User, this defines how to access that User object
@@ -24,6 +25,7 @@ class Event(Base):
 
     # If an event can be linked to a Child, this defines how to access that Child object
     child = relationship("Child") # Similarly, no back_populates if Child model doesn't have a direct list of events.
+    institution = relationship("Institution", back_populates="events")
 
     # Removed __init__ as SQLAlchemy handles it.
     # Previous Event model had: event_id, title, description, start_time, end_time, linked_user_id, linked_child_id
@@ -44,11 +46,14 @@ class Event(Base):
             "start_time": local_start.isoformat() if local_start else None,
             "end_time": local_end.isoformat() if local_end else None,
             "user_id": self.user_id,
-            "child_id": self.child_id
+            "child_id": self.child_id,
+            "institution_id": self.institution_id
         }
         # Optionally include simplified representations of linked user/child
         if include_user and self.user: # self.user is the relationship attribute
             data['user'] = {"id": self.user.id, "name": self.user.name}
         if include_child and self.child: # self.child is the relationship attribute
             data['child'] = {"id": self.child.id, "name": self.child.name}
+        if include_institution and self.institution:
+            data['institution'] = {"id": self.institution.id, "name": self.institution.name}
         return data

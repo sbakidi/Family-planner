@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from sqlalchemy.exc import SQLAlchemyError
 import os # For secret key
 
-from src import auth, user, shift, child, event, grocery, task  # Models
+from src import auth, user, shift, child, event, grocery, task, institution, consent, treatment_plan  # Models
 from src import shift_manager, child_manager, event_manager, shift_pattern_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager  # Managers
 from src.notification import get_user_queue
 
@@ -14,7 +14,7 @@ from src import residency_period
 # This should be called once when the application starts.
 try:
     # Import models to ensure they are registered with Base before init_db() is called
-    from src import user, shift, child, event, shift_swap, expense, task  # Models
+    from src import user, shift, child, event, shift_swap, expense, task, institution, consent, treatment_plan  # Models
     # Import residency_period model for init_db
     from src import residency_period
     from datetime import datetime # For HTML form datetime-local conversion
@@ -57,18 +57,12 @@ def register_user():
         email = data.get('email')
         password = data.get('password')
 
-        # The auth.register function now uses SQLAlchemy and handles DB interaction
         new_user = auth.register(name=name, email=email, password=password)
 
         if new_user:
             # new_user is an SQLAlchemy User model instance
             return jsonify(message=_("User registered successfully"), user_id=new_user.id, name=new_user.name), 201
         else:
-            # auth.register prints "Error: Email already exists." or DB error.
-            # We can return a more generic message or rely on the print for now.
-            # For a production API, consistent error messages are better.
-            # Check if the user object is None due to existing email or other error
-            # This part may need refinement based on how auth.register signals specific errors
             db_session = SessionLocal()
             existing = db_session.query(user.User).filter(user.User.email == email).first()
             db_session.close()
@@ -76,6 +70,11 @@ def register_user():
                  return jsonify(message=_("Email already exists.")), 409 # Conflict
             return jsonify(message=_("Registration failed. Possible database error or invalid input.")), 400
 
+    except Exception as e:
+        print(f"Error in /auth/register: {e}")
+        return jsonify(message="An unexpected error occurred during registration."), 500
+
+# ... (rest of the file remains the same until the new routes)
     except Exception as e: # Catch any other unexpected errors during registration
         print(f"Error in /auth/register: {e}") # Log it
         return jsonify(message=_("An unexpected error occurred during registration.")), 500
@@ -381,10 +380,10 @@ def api_delete_task(task_id):
 
 
 
-# --- Shift Pattern API Endpoints ---
+# --- Institution and Consent API Endpoints ---
 
-@app.route('/shift-patterns', methods=['POST'])
-def api_create_global_shift_pattern():
+@app.route('/institutions', methods=['POST'])
+def api_create_institution():
     data = request.get_json()
     if not data or not all(k in data for k in ("name", "pattern_type", "definition")):
         return jsonify(message=_("Missing name, pattern_type, or definition")), 400
@@ -436,20 +435,21 @@ def api_get_global_shift_patterns():
     patterns = shift_pattern_manager.get_global_shift_patterns()
     return jsonify([p.to_dict() for p in patterns]), 200
 
-@app.route('/users/<int:user_id>/shift-patterns', methods=['GET'])
-def api_get_user_shift_patterns(user_id):
-    # Optional: Validate user_id exists
+def _verify_institution_api_key(inst_id, provided_key):
     db = SessionLocal()
-    target_user = db.query(user.User).filter(user.User.id == user_id).first()
+    inst = db.query(institution.Institution).filter_by(id=inst_id).first()
     db.close()
-    if not target_user:
-        return jsonify(message=f"User with id {user_id} not found."), 404
+    if not inst or inst.api_key != provided_key:
+        return None
+    return inst
 
-    patterns = shift_pattern_manager.get_shift_patterns_for_user(user_id)
-    return jsonify([p.to_dict() for p in patterns]), 200
+@app.route('/institutions/<int:institution_id>/events', methods=['POST'])
+def api_institution_push_event(institution_id):
+    key = request.headers.get('X-API-Key')
+    inst = _verify_institution_api_key(institution_id, key)
+    if not inst:
+        return jsonify(message="Unauthorized"), 401
 
-@app.route('/shift-patterns/<int:pattern_id>', methods=['PUT'])
-def api_update_shift_pattern(pattern_id):
     data = request.get_json()
     if not data:
         return jsonify(message=_("No data provided for update")), 400
@@ -530,6 +530,8 @@ def api_generate_shifts_from_pattern(user_id, pattern_id):
         return jsonify(message=_("An unexpected error occurred during shift generation.")), 500
     finally:
         db.close()
+        if not consent_record:
+            return jsonify(message="No consent for child"), 403
 
 @app.route('/shift-swaps', methods=['POST', 'PUT'])
 def api_shift_swaps():
@@ -817,7 +819,6 @@ def add_event_web():
         linked_child_id=linked_child_id if linked_child_id else None, # Ensure None if 0 or empty
         timezone=timezone_pref
     )
-
     if new_event:
         flash('Event added successfully!', 'success')
     else:
@@ -952,46 +953,13 @@ def children_view():
     # child_manager.get_user_children expects user_id and handles its own DB session
     user_children = child_manager.get_user_children(user_id=user_id)
 
-    return render_template('children.html', children=user_children)
+@app.route('/institutions/<int:institution_id>/treatment-plans', methods=['POST'])
+def api_institution_push_treatment(institution_id):
+    key = request.headers.get('X-API-Key')
+    inst = _verify_institution_api_key(institution_id, key)
+    if not inst:
+        return jsonify(message="Unauthorized"), 401
 
-@app.route('/children/add-web', methods=['POST']) # Renamed to avoid API conflict
-def add_child_web():
-    if 'user_id' not in session:
-        flash('Please login to add a child.', 'warning')
-        return redirect(url_for('login'))
-
-    user_id = session['user_id']
-    name = request.form.get('name')
-    date_of_birth_str = request.form.get('date_of_birth') # HTML date input format: YYYY-MM-DD
-    school_info = request.form.get('school_info')
-    # custody_schedule_info = request.form.get('custody_schedule_info') # If using the old field
-
-    if not name or not date_of_birth_str:
-        flash('Child\'s name and date of birth are required.', 'danger')
-        return redirect(url_for('children_view'))
-
-    # child_manager.add_child expects date_of_birth_str in '%Y-%m-%d' format, which HTML date input provides.
-    # It also handles its own DB session.
-    new_child = child_manager.add_child(
-        user_id=user_id,
-        name=name,
-        date_of_birth_str=date_of_birth_str,
-        school_info=school_info
-        # custody_schedule_info=custody_schedule_info # Pass if using the old field
-    )
-
-    if new_child:
-        flash('Child added successfully!', 'success')
-    else:
-        # child_manager.add_child prints detailed errors
-        flash('Failed to add child. Please check your input or try again.', 'danger')
-
-    return redirect(url_for('children_view'))
-
-
-# The previous residency period POST route:
-@app.route('/children/<int:child_id>/residency-periods', methods=['POST'])
-def api_add_residency_period(child_id):
     data = request.get_json()
     if not data or not all(k in data for k in ("parent_id", "start_datetime", "end_datetime")):
         return jsonify(message=_("Missing parent_id, start_datetime, or end_datetime")), 400
@@ -1023,6 +991,7 @@ def api_add_residency_period(child_id):
         return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
+        return jsonify(message="No consent for child"), 403
 
 @app.route('/children/<int:child_id>/residency-periods', methods=['GET'])
 def api_get_residency_periods_for_child(child_id):
@@ -1049,8 +1018,8 @@ def api_get_residency_periods_for_child(child_id):
     finally:
         db.close()
 
-@app.route('/residency-periods/<int:period_id>', methods=['GET'])
-def api_get_residency_period_details(period_id):
+@app.route('/children/<int:child_id>/institutions/<int:institution_id>/consent', methods=['POST'])
+def api_grant_consent(child_id, institution_id):
     db = SessionLocal()
     try:
         period = child_manager.get_residency_period_details(db_session=db, period_id=period_id)
@@ -1066,16 +1035,12 @@ def api_update_residency_period(period_id):
     if not data:
         return jsonify(message=_("No data provided for update")), 400
 
+@app.route('/children/<int:child_id>/institutions/<int:institution_id>/consent', methods=['DELETE'])
+def api_revoke_consent(child_id, institution_id):
     db = SessionLocal()
-    try:
-        updated_period = child_manager.update_residency_period(
-            db_session=db,
-            period_id=period_id,
-            parent_id=data.get('parent_id'),
-            start_datetime_str=data.get('start_datetime'),
-            end_datetime_str=data.get('end_datetime'),
-            notes=data.get('notes')
-        )
+    record = db.query(consent.Consent).filter_by(child_id=child_id, institution_id=institution_id).first()
+    if record:
+        record.approved = False
         db.commit()
         db.refresh(updated_period)
         return jsonify(updated_period.to_dict()), 200
@@ -1092,6 +1057,9 @@ def api_update_residency_period(period_id):
         return jsonify(message=_("An unexpected error occurred.")), 500
     finally:
         db.close()
+        return jsonify(message="Consent revoked"), 200
+    db.close()
+    return jsonify(message="Consent not found"), 404
 
 @app.route('/residency-periods/<int:period_id>', methods=['DELETE'])
 def api_delete_residency_period(period_id):
