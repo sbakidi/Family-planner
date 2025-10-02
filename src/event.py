@@ -9,6 +9,7 @@ class Event(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     description = Column(String, nullable=True)
+    destination = Column(String, nullable=True)
     start_time = Column(DateTime) # Previous: start_time (str)
     end_time = Column(DateTime)   # Previous: end_time (str)
     completed = Column(Integer, default=0)  # 0 = not done, 1 = done
@@ -42,6 +43,7 @@ class Event(Base):
             "id": self.id,
             "title": self.title,
             "description": self.description,
+            "destination": self.destination,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "user_id": self.user_id,

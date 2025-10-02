@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash, Response, send_from_directory, Blueprint, g
 from sqlalchemy.exc import SQLAlchemyError
 import os  # For secret key
+from datetime import datetime, timedelta
+
+from src import travel_info
 from werkzeug.utils import secure_filename
 
 from src import badge
@@ -27,7 +30,6 @@ try:
     from src import user, shift, child, event, shift_swap, expense, task, booking, document, meal_plan, album, photo   # Models
     # Import residency_period model for init_db
     from src import residency_period
-    from datetime import datetime # For HTML form datetime-local conversion
     init_db()
 except Exception as e:
     print(f"Error initializing database during app startup: {e}")
@@ -283,8 +285,9 @@ def api_create_event():
         description=data.get('description'),
         start_time_str=data['start_time'],
         end_time_str=data['end_time'],
-        linked_user_id=data.get('user_id'), # Optional
-        linked_child_id=data.get('child_id') # Optional
+        linked_user_id=data.get('user_id'),  # Optional
+        linked_child_id=data.get('child_id'),  # Optional
+        destination=data.get('destination')
     )
     if new_event_obj:
         return jsonify(new_event_obj.to_dict()), 201
@@ -333,6 +336,7 @@ def api_update_event(event_id):
         end_time_str=data.get('end_time'),
         linked_user_id=data.get('user_id') if not unlink_user else None,
         linked_child_id=data.get('child_id') if not unlink_child else None,
+        destination=data.get('destination'),
         completed=data.get('completed'),
         unlink_user=unlink_user,
         unlink_child=unlink_child
@@ -1034,11 +1038,19 @@ def events_view():
     user_children = child_manager.get_user_children(user_id=user_id)  # For the dropdown
     overbooked_ids = ai_scheduler.find_overlapping_events(user_events)
 
-    # Enhance event objects with child names if linked
-    # This is a bit inefficient here; ideally, a JOIN in the query or a method in the model would do this.
-    # For now, let's try to add child names if a child_id exists for simplicity in template.
-    # This is not ideal as it leads to N+1 queries if not careful or if ORM doesn't auto-load.
-    # event_manager.get_events_for_user already returns Event objects with child relationship loaded if accessed.
+    # Add travel recommendations if HOME_ADDRESS env var is set
+    origin = os.environ.get('HOME_ADDRESS')
+    if origin:
+        for e in user_events:
+            if e.destination and e.start_time:
+                try:
+                    info = travel_info.get_route_info(origin, e.destination)
+                    mins = info.get('duration_minutes')
+                    if mins is not None:
+                        e.recommended_leave_time = e.start_time - timedelta(minutes=mins)
+                        e.traffic_warning = info.get('traffic_warning')
+                except Exception as ex:
+                    print(f"Travel info error: {ex}")
 
     return render_template('events.html', events=user_events, children=user_children, overbooked_ids=overbooked_ids)
 
@@ -1054,6 +1066,7 @@ def add_event_web():
     start_time_str_html = request.form.get('start_time') # HTML datetime-local
     end_time_str_html = request.form.get('end_time')     # HTML datetime-local
     child_id_str = request.form.get('child_id')
+    destination = request.form.get('destination')
 
     if not title or not start_time_str_html or not end_time_str_html:
         flash('Title, start time, and end time are required for an event.', 'danger')
@@ -1094,6 +1107,7 @@ def add_event_web():
     new_event = event_manager.create_event(
         title=title,
         description=description,
+        destination=destination,
         start_time_str=start_time_formatted,
         end_time_str=end_time_formatted,
         child_id=linked_child_id if linked_child_id else None,

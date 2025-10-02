@@ -1,6 +1,7 @@
 Flask
 SQLAlchemy
 pytest
+requests
 flask-ask
 google-assistant-sdk
 pyotp
