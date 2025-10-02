@@ -1,3 +1,4 @@
+
 # Family-planner
 
 Family-planner
@@ -94,6 +95,7 @@ pytest
 
 You can also run `make test`, which sets up the database and invokes `pytest`
 automatically.
+This will execute the unit tests for the API and manager modules.
 
 
 ## Notifications
@@ -138,3 +140,6 @@ npx expo start
 ```
 
 Use the Expo app or an emulator to view the login and calendar screens. The app expects the Flask API to be running locally at `http://localhost:5000`.
+
+
+
