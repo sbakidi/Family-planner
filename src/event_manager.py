@@ -11,6 +11,7 @@ from src.child import Child
 
 from src.database import SessionLocal
 from src.event import Event
+from src.badge import award_points
 from src.shift import Shift
 from src.residency_period import ResidencyPeriod
 # User and Child models might be needed if we want to validate existence of user_id/child_id before linking
@@ -49,6 +50,7 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
             end_time=end_time_dt,
             user_id=linked_user_id, # This is the FK field in Event model
             child_id=linked_child_id, # This is the FK field in Event model
+            completed=0
             source=source
         )
         db.add(new_event)
@@ -114,7 +116,8 @@ def get_events_for_child(child_id: int):
 def update_event(event_id: int, title: str = None, description: str = None,
                  start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
-                 unlink_user: bool = False, unlink_child: bool = False): # Added unlink flags
+                 completed: bool | None = None,
+                 unlink_user: bool = False, unlink_child: bool = False):
     db = SessionLocal()
     try:
         event = db.query(Event).filter(Event.id == event_id).first()
@@ -157,6 +160,12 @@ def update_event(event_id: int, title: str = None, description: str = None,
         elif linked_child_id is not None:
             event.child_id = linked_child_id
             updated = True
+
+        if completed is not None and bool(event.completed) != completed:
+            event.completed = 1 if completed else 0
+            updated = True
+            if completed and event.user_id:
+                award_points(event.user_id, 10, "event_completed")
 
         if updated:
             db.commit()

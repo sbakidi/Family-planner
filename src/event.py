@@ -11,6 +11,7 @@ class Event(Base):
     description = Column(String, nullable=True)
     start_time = Column(DateTime) # Previous: start_time (str)
     end_time = Column(DateTime)   # Previous: end_time (str)
+    completed = Column(Integer, default=0)  # 0 = not done, 1 = done
 
     # Foreign keys to link event to a user and/or a child
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Previous: linked_user_id (str, uuid)
