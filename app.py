@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import os  # For secret key
 from datetime import datetime, timedelta
 
-
+# Standard modules
 
 from src.database import init_db, SessionLocal
 from src import residency_period  # Import residency_period model for init_db
@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 from src import badge
 from src import auth, user, shift, child, event, grocery, task, booking, document, meal_plan, album, photo  # Models
 from datetime import datetime
-from src import shift_manager, child_manager, event_manager, shift_pattern_manager, photo_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
+from src import shift_manager, child_manager, event_manager, shift_pattern_manager, budget_manager, photo_manager, grocery_manager, calendar_sync, shift_swap_manager, expense_manager, task_manager, school_import, booking_manager # Managers and utilities
 from src.notification import get_user_queue
 
 
@@ -36,6 +36,8 @@ try:
     from src import user, shift, child, event, shift_swap, expense, task, booking, document, meal_plan, album, photo   # Models
     # Import residency_period model for init_db
     from src import residency_period
+    from src import budget  # Ensure budget tables are created
+    from datetime import datetime # For HTML form datetime-local conversion
     init_db()
 except Exception as e:
     print(f"Error initializing database during app startup: {e}")
@@ -1450,6 +1452,108 @@ def documents_view():
 @app.route('/uploads/<path:filename>')
 def download_document(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+
+# --- Budget Web Routes ---
+
+@app.route('/budgets', methods=['GET'])
+def budgets_view():
+    if 'user_id' not in session:
+        flash('Please login to manage categories.', 'warning')
+        return redirect(url_for('login'))
+
+    categories = budget_manager.get_categories()
+    return render_template('budgets.html', categories=categories)
+
+
+@app.route('/budgets/add', methods=['POST'])
+def add_category():
+    if 'user_id' not in session:
+        flash('Please login to add a category.', 'warning')
+        return redirect(url_for('login'))
+
+    name = request.form.get('name')
+    if not name:
+        flash('Category name is required.', 'danger')
+        return redirect(url_for('budgets_view'))
+
+    new_cat = budget_manager.add_category(name=name)
+    if new_cat:
+        flash('Category added successfully!', 'success')
+    else:
+        flash('Failed to add category.', 'danger')
+    return redirect(url_for('budgets_view'))
+
+
+@app.route('/expenses', methods=['GET'])
+def expenses_view():
+    if 'user_id' not in session:
+        flash('Please login to view expenses.', 'warning')
+        return redirect(url_for('login'))
+
+    transactions = budget_manager.get_transactions()
+    categories = budget_manager.get_categories()
+    return render_template('expenses.html', transactions=transactions, categories=categories)
+
+
+@app.route('/expenses/add', methods=['POST'])
+def add_expense():
+    if 'user_id' not in session:
+        flash('Please login to add an expense.', 'warning')
+        return redirect(url_for('login'))
+
+    date_str = request.form.get('date')
+    amount_str = request.form.get('amount')
+    category_id_str = request.form.get('category_id')
+    description = request.form.get('description')
+
+    if not date_str or not amount_str:
+        flash('Date and amount are required.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        flash('Invalid amount.', 'danger')
+        return redirect(url_for('expenses_view'))
+
+    category_id = int(category_id_str) if category_id_str and category_id_str.isdigit() else None
+
+    new_tx = budget_manager.add_transaction(
+        category_id=category_id,
+        amount=amount,
+        date_str=date_str,
+        description=description
+    )
+
+    if new_tx:
+        flash('Expense added successfully!', 'success')
+    else:
+        flash('Failed to add expense.', 'danger')
+    return redirect(url_for('expenses_view'))
+
+
+@app.route('/analytics', methods=['GET'])
+def analytics_dashboard():
+    if 'user_id' not in session:
+        flash('Please login to view analytics.', 'warning')
+        return redirect(url_for('login'))
+
+    month_param = request.args.get('month')
+    if month_param:
+        try:
+            year, month = [int(x) for x in month_param.split('-')]
+        except ValueError:
+            today = datetime.utcnow()
+            year, month = today.year, today.month
+            month_param = f"{year:04d}-{month:02d}"
+    else:
+        today = datetime.utcnow()
+        year, month = today.year, today.month
+        month_param = f"{year:04d}-{month:02d}"
+
+    summary = budget_manager.get_monthly_summary(year=year, month=month)
+    return render_template('analytics.html', summary=summary, selected_month=month_param)
 
 
 # The previous residency period POST route:
