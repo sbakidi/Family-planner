@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import hashlib
+import sys
 from datetime import datetime, date
 import sys
 
@@ -18,6 +19,7 @@ from src.database import initialize_database_for_application, create_tables, dro
 from src.user import User
 from src.child import Child
 from src.event import Event
+from src.token_manager import generate_token_for_user
 
 class TestAPIEvents(unittest.TestCase):
 
@@ -50,6 +52,7 @@ class TestAPIEvents(unittest.TestCase):
         self.user1 = self._create_user_directly(name="Event User One", email="eventuser1@example.com", password="password1")
         self.user2 = self._create_user_directly(name="Event User Two", email="eventuser2@example.com", password="password2")
         self.child1_user1 = self._create_child_for_user_db(user_id=self.user1.id, child_name="Event Child One of User1")
+        self.token1 = generate_token_for_user(self.user1.id)
 
     def tearDown(self):
         self.db.query(Event).delete()
@@ -80,6 +83,9 @@ class TestAPIEvents(unittest.TestCase):
         self.db.refresh(child_obj)
         return child_obj
 
+    def _auth_headers(self):
+        return {"Authorization": f"Bearer {self.token1}"}
+
     def _create_event_api(self, title, start_time_str, end_time_str, user_id=None, child_id=None, description=None):
         payload = {
             "title": title,
@@ -93,7 +99,7 @@ class TestAPIEvents(unittest.TestCase):
         if child_id:
             payload["child_id"] = child_id
 
-        return self.client.post('/events', json=payload)
+        return self.client.post('/api/v1/events', json=payload, headers=self._auth_headers())
 
     # --- Test Methods for Events ---
     def test_create_event_for_user_success(self):
@@ -149,14 +155,14 @@ class TestAPIEvents(unittest.TestCase):
         event_res = self._create_event_api("Get Details Event", "2024-01-01 10:00", "2024-01-01 11:00", user_id=self.user1.id)
         event_id = event_res.get_json()['id']
 
-        response = self.client.get(f'/events/{event_id}')
+        response = self.client.get(f'/api/v1/events/{event_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['title'], "Get Details Event")
         self.assertEqual(data['id'], event_id)
 
     def test_get_event_details_not_found(self):
-        response = self.client.get('/events/99999')
+        response = self.client.get('/api/v1/events/99999', headers=self._auth_headers())
         self.assertEqual(response.status_code, 404)
 
     def test_get_events_for_user_success(self):
@@ -164,7 +170,7 @@ class TestAPIEvents(unittest.TestCase):
         self._create_event_api("User1 Event B", "2024-01-02 10:00", "2024-01-02 11:00", user_id=self.user1.id)
         self._create_event_api("User2 Event C", "2024-01-03 10:00", "2024-01-03 11:00", user_id=self.user2.id)
 
-        response = self.client.get(f'/users/{self.user1.id}/events')
+        response = self.client.get(f'/api/v1/users/{self.user1.id}/events', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -178,7 +184,7 @@ class TestAPIEvents(unittest.TestCase):
         self._create_event_api("Child1 Event Y", "2024-01-02 10:00", "2024-01-02 11:00", child_id=self.child1_user1.id)
         self._create_event_api("Child2 Event Z", "2024-01-03 10:00", "2024-01-03 11:00", child_id=child2_user1.id)
 
-        response = self.client.get(f'/children/{self.child1_user1.id}/events')
+        response = self.client.get(f'/api/v1/children/{self.child1_user1.id}/events', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(len(data), 2)
@@ -191,7 +197,7 @@ class TestAPIEvents(unittest.TestCase):
         event_id = event_res.get_json()['id']
 
         update_payload = {"title": "New Updated Title", "description": "Updated Desc"}
-        response = self.client.put(f'/events/{event_id}', json=update_payload)
+        response = self.client.put(f'/api/v1/events/{event_id}', json=update_payload, headers=self._auth_headers())
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data['title'], "New Updated Title")
@@ -204,7 +210,7 @@ class TestAPIEvents(unittest.TestCase):
         event_res = self._create_event_api("To Delete Event", "2024-01-01 10:00", "2024-01-01 11:00")
         event_id = event_res.get_json()['id']
 
-        response = self.client.delete(f'/events/{event_id}')
+        response = self.client.delete(f'/api/v1/events/{event_id}', headers=self._auth_headers())
         self.assertEqual(response.status_code, 200) # API returns 200
         self.assertIsNone(self.db.query(Event).get(event_id))
 
