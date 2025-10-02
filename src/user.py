@@ -48,6 +48,7 @@ class User(Base):
             "timezone": self.timezone,
             "prefers_sse": self.prefers_sse,
             "prefers_email": self.prefers_email
+            # Exclude hashed_password for security
         }
         if include_shifts and self.shifts:
             data['shifts'] = [shift.to_dict(include_owner=False) for shift in self.shifts]
