@@ -1,0 +1,5 @@
+msgid "User registered successfully"
+msgstr "User registered successfully"
+
+msgid "Login successful"
+msgstr "Login successful"

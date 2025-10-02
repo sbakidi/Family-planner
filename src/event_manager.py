@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 
 from src.notification import send_notification
@@ -9,22 +10,25 @@ from src.child import Child
 from src.database import SessionLocal
 from src.event import Event
 
-def _parse_datetime(datetime_str: str):
+def _parse_datetime(datetime_str: str, timezone_str: str = 'UTC'):
+    """Parse a datetime string in the given timezone and return naive UTC."""
     if not datetime_str:
         return None
     try:
-        return datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        naive = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        local = naive.replace(tzinfo=ZoneInfo(timezone_str))
+        utc = local.astimezone(ZoneInfo('UTC'))
+        return utc.replace(tzinfo=None)
     except ValueError:
         print(f"Warning: Could not parse datetime string: {datetime_str}")
         return None
 
 def create_event(title: str, description: str, start_time_str: str, end_time_str: str,
-                 linked_user_id: int = None, linked_child_id: int = None,
-                 institution_id: int = None):
+                 linked_user_id: int = None, linked_child_id: int = None, timezone: str = 'UTC'):
     db = SessionLocal()
     try:
-        start_time_dt = _parse_datetime(start_time_str)
-        end_time_dt = _parse_datetime(end_time_str)
+        start_time_dt = _parse_datetime(start_time_str, timezone)
+        end_time_dt = _parse_datetime(end_time_str, timezone)
 
         if not start_time_dt or not end_time_dt:
             print("Error: Invalid start or end time format for event.")
@@ -42,7 +46,7 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
         db.add(new_event)
         db.commit()
         db.refresh(new_event)
-
+        # Notify linked user or parents of linked child
         if new_event.user_id:
             send_notification(new_event.user_id, {
                 "type": "event_created",
@@ -56,7 +60,6 @@ def create_event(title: str, description: str, start_time_str: str, end_time_str
                         "type": "event_created",
                         "event": new_event.to_dict(include_user=False, include_child=False)
                     })
-
         return new_event
     except SQLAlchemyError as e:
         db.rollback()
@@ -112,9 +115,7 @@ def get_events_for_institution(institution_id: int):
 def update_event(event_id: int, title: str = None, description: str = None,
                  start_time_str: str = None, end_time_str: str = None,
                  linked_user_id: int = None, linked_child_id: int = None,
-                 institution_id: int = None,
-                 unlink_user: bool = False, unlink_child: bool = False,
-                 unlink_institution: bool = False):
+                 unlink_user: bool = False, unlink_child: bool = False, timezone: str = 'UTC'): # Added unlink flags
     db = SessionLocal()
     try:
         event = db.query(Event).filter(Event.id == event_id).first()
@@ -130,14 +131,14 @@ def update_event(event_id: int, title: str = None, description: str = None,
             event.description = description
             updated = True
         if start_time_str is not None:
-            start_time_dt = _parse_datetime(start_time_str)
+            start_time_dt = _parse_datetime(start_time_str, timezone)
             if start_time_dt:
                 event.start_time = start_time_dt
                 updated = True
             else:
                 print("Warning: Invalid start time format, not updated.")
         if end_time_str is not None:
-            end_time_dt = _parse_datetime(end_time_str)
+            end_time_dt = _parse_datetime(end_time_str, timezone)
             if end_time_dt:
                 event.end_time = end_time_dt
                 updated = True

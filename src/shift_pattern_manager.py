@@ -34,8 +34,12 @@ def create_shift_pattern(name: str, description: str, pattern_type: str, definit
         db.close()
 
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
-def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: int, start_date_str: str, end_date_str: str):
+def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: int, start_date_str: str, end_date_str: str, timezone: str = 'UTC'):
+def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: int,
+                                start_date_str: str, end_date_str: str,
+                                holidays=None, exceptions=None):
     pattern = db_session.query(ShiftPattern).filter(ShiftPattern.id == pattern_id).first()
     if not pattern:
         raise ValueError(f"ShiftPattern with id {pattern_id} not found.")
@@ -49,6 +53,9 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
         end_date_obj = date.fromisoformat(end_date_str)
     except ValueError:
         raise ValueError("Invalid date format. Please use YYYY-MM-DD.")
+
+    holidays_set = set(date.fromisoformat(d) for d in holidays) if holidays else set()
+    exceptions = exceptions or {}
 
     if start_date_obj > end_date_obj:
         raise ValueError("Start date cannot be after end date.")
@@ -72,6 +79,15 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
 
         current_date = start_date_obj
         while current_date <= end_date_obj:
+            if current_date in holidays_set:
+                current_date += timedelta(days=1)
+                continue
+
+            exception_def = exceptions.get(current_date.isoformat())
+            if exception_def == 'off':
+                current_date += timedelta(days=1)
+                continue
+
             days_from_ref = (current_date - cycle_start_ref_date).days
             current_day_in_cycle = days_from_ref % total_cycle_days
 
@@ -89,13 +105,20 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                 start_time_str = current_segment.get('start_time')
                 end_time_str = current_segment.get('end_time')
 
+                if isinstance(exception_def, dict):
+                    shift_name = exception_def.get('name', shift_name)
+                    start_time_str = exception_def.get('start_time', start_time_str)
+                    end_time_str = exception_def.get('end_time', end_time_str)
+
                 if not start_time_str or not end_time_str:
                     print(f"Warning: Skipping shift for {current_date} due to missing start/end time in segment {shift_name}")
                     current_date += timedelta(days=1)
                     continue
 
                 shift_start_datetime = datetime.combine(current_date, datetime.strptime(start_time_str, "%H:%M").time())
+                shift_start_datetime = shift_start_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
                 shift_end_datetime = datetime.combine(current_date, datetime.strptime(end_time_str, "%H:%M").time())
+                shift_end_datetime = shift_end_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
                 if shift_end_datetime < shift_start_datetime: # Overnight shift
                     shift_end_datetime += timedelta(days=1)
@@ -121,7 +144,16 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
 
         current_date = start_date_obj
         while current_date <= end_date_obj:
-            day_name = current_date.strftime("%A").lower() # Monday, Tuesday, ...
+            if current_date in holidays_set:
+                current_date += timedelta(days=1)
+                continue
+
+            exception_def = exceptions.get(current_date.isoformat())
+            if exception_def == 'off':
+                current_date += timedelta(days=1)
+                continue
+
+            day_name = current_date.strftime("%A").lower()  # Monday, Tuesday, ...
             segment_def = pattern.definition.get(day_name)
 
             if isinstance(segment_def, dict) and segment_def.get('name', '').lower() != 'off':
@@ -129,13 +161,20 @@ def generate_shifts_from_pattern(db_session: Session, pattern_id: int, user_id: 
                 start_time_str = segment_def.get('start_time')
                 end_time_str = segment_def.get('end_time')
 
+                if isinstance(exception_def, dict):
+                    shift_name = exception_def.get('name', shift_name)
+                    start_time_str = exception_def.get('start_time', start_time_str)
+                    end_time_str = exception_def.get('end_time', end_time_str)
+
                 if not start_time_str or not end_time_str:
                     print(f"Warning: Skipping fixed shift for {current_date} due to missing start/end time in segment {shift_name}")
                     current_date += timedelta(days=1)
                     continue
 
                 shift_start_datetime = datetime.combine(current_date, datetime.strptime(start_time_str, "%H:%M").time())
+                shift_start_datetime = shift_start_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
                 shift_end_datetime = datetime.combine(current_date, datetime.strptime(end_time_str, "%H:%M").time())
+                shift_end_datetime = shift_end_datetime.replace(tzinfo=ZoneInfo(timezone)).astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
                 if shift_end_datetime < shift_start_datetime: # Overnight
                     shift_end_datetime += timedelta(days=1)
